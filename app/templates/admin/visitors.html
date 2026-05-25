@@ -1,66 +1,111 @@
 {% extends 'admin/base.html' %}
 {% block title %}Visitantes{% endblock %}
 {% block content %}
-<div class="mb-6 flex items-center justify-between">
+
+<div class="mb-6 flex flex-wrap items-center justify-between gap-3">
   <div>
     <h1 class="text-xl font-semibold">Visitantes</h1>
-    <p class="text-sm text-slate-400 mt-0.5">Todos os visitantes cadastrados no portal.</p>
+    <p class="text-sm text-slate-400 mt-0.5">{{ pagination.total }} cadastros</p>
   </div>
-  <a href="{{ url_for('admin.export_visitors') }}"
-     class="inline-flex items-center gap-2 rounded-xl border border-teal-500/30 bg-teal-500/10 px-4 py-2 text-sm text-teal-300 hover:bg-teal-500/20 transition">
-    Exportar CSV
-  </a>
+  <div class="flex gap-2">
+    <a href="{{ url_for('admin.export_visitors') }}"
+       class="flex items-center gap-2 rounded-xl border border-teal-500/30 bg-teal-500/10
+              px-4 py-2 text-sm text-teal-300 hover:bg-teal-500/20 transition">
+      <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 16v-4m0 0V8m0 4H8m4 0h4M20 12a8 8 0 1 1-16 0 8 8 0 0 1 16 0"/>
+      </svg>
+      Exportar CSV
+    </a>
+  </div>
 </div>
 
 <!-- Busca -->
-<form method="get" class="mb-4">
-  <input type="text" name="q" value="{{ q }}" placeholder="Buscar por nome ou e-mail…"
-         class="w-full max-w-sm rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-100
-                focus:outline-none focus:border-teal-500/50 transition">
+<form method="get" class="mb-5">
+  <div class="relative">
+    <svg class="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500"
+         fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+    </svg>
+    <input type="search" name="q" value="{{ q }}"
+           placeholder="Buscar por nome ou e-mail…"
+           class="w-full rounded-xl bg-slate-900 border border-white/10 pl-10 pr-4 py-2.5
+                  text-sm text-slate-200 placeholder-slate-500
+                  focus:outline-none focus:border-teal-500/50 transition">
+  </div>
 </form>
 
+<!-- Tabela -->
 <div class="bg-slate-900 border border-white/5 rounded-2xl overflow-hidden">
   <div class="overflow-x-auto">
     <table class="w-full text-sm">
       <thead>
-        <tr class="border-b border-white/5 text-xs text-slate-400 uppercase tracking-wide">
-          <th class="px-4 py-3 text-left">Nome</th>
-          <th class="px-4 py-3 text-left">E-mail</th>
-          <th class="px-4 py-3 text-left">Celular</th>
-          <th class="px-4 py-3 text-left">Cadastrado em</th>
-          <th class="px-4 py-3 text-left">Status</th>
+        <tr class="text-xs text-slate-500 border-b border-white/5">
+          <th class="text-left px-5 py-3 font-medium">Nome</th>
+          <th class="text-left px-5 py-3 font-medium hidden md:table-cell">Contato</th>
+          <th class="text-left px-5 py-3 font-medium hidden lg:table-cell">Visitas</th>
+          <th class="text-left px-5 py-3 font-medium hidden lg:table-cell">Último acesso</th>
+          <th class="text-left px-5 py-3 font-medium">Status</th>
+          <th class="text-left px-5 py-3 font-medium">Cadastro</th>
         </tr>
       </thead>
       <tbody class="divide-y divide-white/5">
         {% for v in pagination.items %}
-        <tr class="hover:bg-white/2 transition">
-          <td class="px-4 py-3 font-medium text-slate-200">{{ v.full_name }}</td>
-          <td class="px-4 py-3 text-slate-400">{{ v.email }}</td>
-          <td class="px-4 py-3 text-slate-400">{{ v.mobile or '-' }}</td>
-          <td class="px-4 py-3 text-slate-400 text-xs">{{ v.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
-          <td class="px-4 py-3">
-            {% if v.is_active %}
-              <span class="text-xs text-emerald-400">Ativo</span>
+        <tr class="hover:bg-white/3 transition">
+          <td class="px-5 py-3">
+            <p class="font-medium text-slate-200">{{ v.full_name }}</p>
+            <p class="text-xs text-slate-500">CPF: {{ v.cpf }}</p>
+          </td>
+          <td class="px-5 py-3 hidden md:table-cell">
+            <p class="text-xs text-slate-300">{{ v.email }}</p>
+            <p class="text-xs text-slate-500">{{ v.mobile }}</p>
+          </td>
+          <td class="px-5 py-3 hidden lg:table-cell">
+            <span class="text-sm font-semibold text-slate-200">{{ v.visit_count or 0 }}</span>
+            <span class="text-xs text-slate-500"> acessos</span>
+          </td>
+          <td class="px-5 py-3 hidden lg:table-cell text-xs text-slate-500">
+            {{ v.last_seen.strftime('%d/%m/%Y %H:%M') if v.last_seen else '—' }}
+          </td>
+          <td class="px-5 py-3">
+            {% if v.is_blocked %}
+            <span class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-rose-500/15 text-rose-400">Bloqueado</span>
+            {% elif v.is_active %}
+            <span class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-500/15 text-emerald-400">Ativo</span>
             {% else %}
-              <span class="text-xs text-slate-500">Inativo</span>
+            <span class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-slate-500/15 text-slate-500">Inativo</span>
             {% endif %}
+          </td>
+          <td class="px-5 py-3 text-xs text-slate-500">
+            {{ v.created_at.strftime('%d/%m/%Y') if v.created_at else '—' }}
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="5" class="px-4 py-8 text-center text-slate-500">Nenhum visitante encontrado.</td></tr>
+        <tr>
+          <td colspan="6" class="px-5 py-10 text-center text-sm text-slate-600">
+            {% if q %}Nenhum visitante encontrado para "{{ q }}".{% else %}Nenhum visitante cadastrado ainda.{% endif %}
+          </td>
+        </tr>
         {% endfor %}
       </tbody>
     </table>
   </div>
+
+  <!-- Paginação -->
   {% if pagination.pages > 1 %}
-  <div class="px-4 py-3 border-t border-white/5 flex items-center gap-2 text-xs text-slate-400">
-    {% if pagination.has_prev %}
-      <a href="?page={{ pagination.prev_num }}&q={{ q }}" class="px-3 py-1 rounded-lg border border-white/10 hover:bg-white/5 transition">← Anterior</a>
-    {% endif %}
-    <span>Página {{ pagination.page }} de {{ pagination.pages }}</span>
-    {% if pagination.has_next %}
-      <a href="?page={{ pagination.next_num }}&q={{ q }}" class="px-3 py-1 rounded-lg border border-white/10 hover:bg-white/5 transition">Próxima →</a>
-    {% endif %}
+  <div class="flex items-center justify-between border-t border-white/5 px-5 py-3">
+    <p class="text-xs text-slate-500">
+      Exibindo {{ pagination.items|length }} de {{ pagination.total }}
+    </p>
+    <div class="flex gap-1">
+      {% if pagination.has_prev %}
+      <a href="?page={{ pagination.prev_num }}{% if q %}&q={{ q }}{% endif %}"
+         class="rounded-lg px-3 py-1.5 text-xs text-slate-400 hover:bg-white/5 transition">← Anterior</a>
+      {% endif %}
+      {% if pagination.has_next %}
+      <a href="?page={{ pagination.next_num }}{% if q %}&q={{ q }}{% endif %}"
+         class="rounded-lg px-3 py-1.5 text-xs text-slate-400 hover:bg-white/5 transition">Próxima →</a>
+      {% endif %}
+    </div>
   </div>
   {% endif %}
 </div>

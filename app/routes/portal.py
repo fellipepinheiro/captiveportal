@@ -24,16 +24,18 @@ def _get_portal_session():
 @bp.get("/guest/s/default/")
 @bp.get("/guest/")
 def entry():
-    client_mac = request.args.get("id") or request.args.get("mac")
-    ap_mac = request.args.get("ap")
-    ssid = request.args.get("ssid", "WiFi")
-    redirect_url = request.args.get("url", "http://google.com")
+    client_mac  = request.args.get("id") or request.args.get("mac")
+    ap_mac      = request.args.get("ap")
+    ssid        = request.args.get("ssid", "WiFi")
+    redirect_url= request.args.get("url", "http://google.com")
+
     portal_session = create_pending_session(client_mac, ap_mac, ssid, redirect_url)
     session[PORTAL_SESSION_KEY] = portal_session.id
+
     return render_template(
         "portal/start.html",
         ssid=ssid,
-        privacy_url=current_app.config["PRIVACY_POLICY_URL"],
+        privacy_url=current_app.config.get("PRIVACY_POLICY_URL", "#"),
     )
 
 
@@ -42,22 +44,31 @@ def entry():
 def identify():
     portal_session = _get_portal_session()
     if not portal_session:
-        flash("Sessao expirada. Por favor, conecte-se novamente.", "error")
+        flash("Sessão expirada. Por favor, conecte-se novamente.", "error")
         return redirect(url_for("portal.entry"))
 
-    email = request.form.get("email", "").strip().lower()
+    email  = request.form.get("email",  "").strip().lower()
     mobile = request.form.get("mobile", "").strip()
 
+    # Validações
     if not email or not mobile:
         flash("Preencha e-mail e celular.", "error")
         return redirect(url_for("portal.entry"))
-
     if not validate_phone(mobile):
-        flash("Numero de celular invalido.", "error")
+        flash("Número de celular inválido.", "error")
+        return redirect(url_for("portal.entry"))
+    # Aceite de termos obrigatório desde a etapa 1
+    if not request.form.get("terms_accepted"):
+        flash("Você precisa aceitar os Termos de Uso para continuar.", "error")
         return redirect(url_for("portal.entry"))
 
     visitor = Visitor.find_by_email_or_mobile(email, mobile)
     if visitor:
+        # Visitante bloqueado
+        if visitor.is_blocked:
+            flash("Seu acesso foi restrito. Entre em contato com o suporte.", "error")
+            return redirect(url_for("portal.entry"))
+
         ok = authorize_visitor(portal_session, visitor)
         if ok:
             return render_template(
@@ -65,10 +76,11 @@ def identify():
                 redirect_url=portal_session.redirect_url,
                 name=visitor.full_name,
             )
-        flash("Nao foi possivel autorizar o acesso agora. Tente novamente.", "error")
+        flash("Não foi possível autorizar o acesso agora. Tente novamente.", "error")
         return redirect(url_for("portal.entry"))
 
-    session["reg_email"] = email
+    # Novo visitante → cadastro
+    session["reg_email"]  = email
     session["reg_mobile"] = normalize_phone(mobile)
     return redirect(url_for("portal.register"))
 
@@ -84,8 +96,8 @@ def register():
         "portal/register.html",
         email=session.get("reg_email"),
         mobile=session.get("reg_mobile"),
-        privacy_url=current_app.config["PRIVACY_POLICY_URL"],
-        terms_version=current_app.config["TERMS_VERSION"],
+        privacy_url=current_app.config.get("PRIVACY_POLICY_URL", "#"),
+        terms_version=current_app.config.get("TERMS_VERSION", "1.0"),
     )
 
 
@@ -94,30 +106,30 @@ def register():
 def register_submit():
     portal_session = _get_portal_session()
     if not portal_session:
-        flash("Sessao expirada. Por favor, conecte-se novamente.", "error")
+        flash("Sessão expirada. Por favor, conecte-se novamente.", "error")
         return redirect(url_for("portal.entry"))
 
-    email = session.get("reg_email", "").strip().lower()
-    mobile = session.get("reg_mobile", "").strip()
-    full_name = request.form.get("full_name", "").strip()
-    cpf = request.form.get("cpf", "").strip()
-    marketing_optin = bool(request.form.get("marketing_optin"))
-    terms_accepted = bool(request.form.get("terms_accepted"))
+    email          = session.get("reg_email",  "").strip().lower()
+    mobile         = session.get("reg_mobile", "").strip()
+    full_name      = request.form.get("full_name",     "").strip()
+    cpf            = request.form.get("cpf",           "").strip()
+    marketing_optin= bool(request.form.get("marketing_optin"))
+    terms_version  = current_app.config.get("TERMS_VERSION", "1.0")
 
-    if not terms_accepted:
-        flash("Voce precisa aceitar os Termos de Uso para continuar.", "error")
-        return redirect(url_for("portal.register"))
-    if not full_name or len(full_name) < 3:
-        flash("Nome invalido.", "error")
+    if not full_name or len(full_name.split()) < 2:
+        flash("Informe seu nome completo (mínimo 2 palavras).", "error")
         return redirect(url_for("portal.register"))
     if not validate_cpf(cpf):
-        flash("CPF invalido.", "error")
+        flash("CPF inválido.", "error")
         return redirect(url_for("portal.register"))
 
     visitor = Visitor.query.filter_by(cpf=cpf).first()
     created = False
     if visitor is None:
-        visitor = Visitor.create(full_name=full_name, email=email, mobile=mobile, cpf=cpf)
+        visitor = Visitor.create(
+            full_name=full_name, email=email, mobile=mobile,
+            cpf=cpf, terms_version=terms_version, marketing_optin=marketing_optin,
+        )
         db.session.add(visitor)
         try:
             db.session.flush()
@@ -130,7 +142,7 @@ def register_submit():
                 return redirect(url_for("portal.register"))
 
     if created:
-        record_consent(visitor, marketing_optin=marketing_optin)
+        record_consent(visitor, marketing_optin=marketing_optin, version=terms_version)
 
     db.session.commit()
 
@@ -144,5 +156,5 @@ def register_submit():
             redirect_url=portal_session.redirect_url,
             name=visitor.full_name,
         )
-    flash("Cadastro realizado, mas nao foi possivel autorizar agora. Tente novamente.", "error")
+    flash("Cadastro realizado, mas não foi possível autorizar agora. Tente novamente.", "error")
     return redirect(url_for("portal.entry"))

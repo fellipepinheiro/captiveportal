@@ -7,27 +7,33 @@
   <div class="step-dot pending">2</div>
   <div class="step-line"></div>
   <div class="step-dot pending">
-    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="20 6 9 17 4 12"/>
+    </svg>
   </div>
 </div>
 <p class="mb-6 text-center text-xs text-slate-500 -mt-3">Identificação</p>
 {% endblock %}
 
 {% block content %}
-<form method="post" action="{{ url_for('portal.identify') }}" class="space-y-4" id="form-identify" novalidate>
+<form method="post" action="{{ url_for('portal.identify') }}" class="space-y-4"
+      id="form-identify" novalidate autocomplete="on">
+  {{ csrf_input() }}
 
+  <!-- E-mail -->
   <div>
-    <label for="email" class="mb-1.5 block text-sm font-medium text-slate-300">
-      E-mail
-    </label>
+    <label for="email" class="mb-1.5 block text-sm font-medium text-slate-300">E-mail</label>
     <div class="relative">
       <span class="pointer-events-none absolute inset-y-0 left-3.5 flex items-center">
-        <svg class="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg class="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2">
           <rect width="20" height="16" x="2" y="4" rx="2"/>
           <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
         </svg>
       </span>
-      <input id="email" name="email" type="email" required autocomplete="email"
+      <input id="email" name="email" type="email" required
+             autocomplete="email" inputmode="email"
              class="input-field pl-10"
              placeholder="voce@exemplo.com"
              value="{{ request.form.get('email', '') }}">
@@ -35,18 +41,21 @@
     <p class="mt-1 hidden text-xs text-rose-400" id="email-error">Informe um e-mail válido.</p>
   </div>
 
+  <!-- Celular -->
   <div>
     <label for="mobile" class="mb-1.5 block text-sm font-medium text-slate-300">
       Celular / WhatsApp
     </label>
     <div class="relative">
       <span class="pointer-events-none absolute inset-y-0 left-3.5 flex items-center">
-        <svg class="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <svg class="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2">
           <rect width="14" height="20" x="5" y="2" rx="2"/>
           <path d="M12 18h.01"/>
         </svg>
       </span>
-      <input id="mobile" name="mobile" type="tel" required autocomplete="tel"
+      <input id="mobile" name="mobile" type="tel" required
+             autocomplete="tel" inputmode="tel"
              class="input-field pl-10"
              placeholder="(47) 99999-9999"
              maxlength="15"
@@ -55,26 +64,77 @@
     <p class="mt-1 hidden text-xs text-rose-400" id="mobile-error">Informe um celular válido com DDD.</p>
   </div>
 
+  <!-- Badge SSID -->
   <div class="flex items-center gap-2.5 rounded-xl border border-white/8 bg-white/4 px-3.5 py-2.5">
-    <svg class="h-4 w-4 shrink-0 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <svg class="h-4 w-4 shrink-0 text-slate-400" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="2">
       <path d="M8.288 15.038a5.25 5.25 0 0 1 7.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0M12.53 18.22l-.53.53-.53-.53a.75.75 0 0 1 1.06 0Z"/>
     </svg>
     <span class="text-xs text-slate-400">Rede: <strong class="text-slate-200">{{ ssid or 'Visitantes' }}</strong></span>
   </div>
 
-  <div class="pt-1">
-    <button type="submit" class="btn-primary" id="btn-submit">
-      Continuar
-    </button>
-  </div>
+  <!-- Aceite de termos inline -->
+  <label class="flex cursor-pointer items-start gap-3 rounded-xl border border-white/8 bg-white/4 px-3.5 py-3">
+    <input type="checkbox" name="terms_accepted" id="terms_accepted" class="mt-0.5 h-4 w-4 accent-teal-500" required>
+    <span class="text-xs text-slate-400 leading-relaxed">
+      Li e aceito os
+      <button type="button" onclick="openTerms()"
+              class="underline underline-offset-2 text-slate-300 hover:text-white transition">Termos de Uso</button>
+      e a
+      <a href="{{ privacy_url }}" target="_blank" rel="noopener"
+         class="underline underline-offset-2 text-slate-300 hover:text-white transition">Política de Privacidade</a>.
+    </span>
+  </label>
+  <p class="-mt-2 hidden text-xs text-rose-400" id="terms-error">Você precisa aceitar os termos.</p>
 
-  <p class="text-center text-xs text-slate-600">
-    Primeira vez? Você será cadastrado rapidamente.
-  </p>
+  <div class="pt-1">
+    <button type="submit" class="btn-primary" id="btn-submit">Continuar</button>
+  </div>
+  <p class="text-center text-xs text-slate-600">Primeira vez? Você será cadastrado rapidamente.</p>
 </form>
 
+<!-- Modal de Termos -->
+<div id="modal-terms"
+     class="fixed inset-0 z-50 hidden items-center justify-center p-4"
+     style="background:rgba(0,0,0,0.7); backdrop-filter:blur(4px)">
+  <div class="relative w-full max-w-sm rounded-2xl bg-slate-900 border border-white/10 shadow-2xl">
+    <div class="flex items-center justify-between border-b border-white/8 px-5 py-4">
+      <h3 class="text-sm font-semibold text-slate-100">Termos de Uso</h3>
+      <button onclick="closeTerms()" class="text-slate-500 hover:text-slate-300 transition">
+        <svg class="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M6 18 18 6M6 6l12 12"/>
+        </svg>
+      </button>
+    </div>
+    <div class="max-h-64 overflow-y-auto px-5 py-4 text-xs text-slate-400 space-y-2 leading-relaxed">
+      <p><strong class="text-slate-300">1. Uso responsável</strong><br>
+        A rede Wi-Fi é fornecida exclusivamente para fins legais. É proibido o uso para atividades
+        ilegais, disseminação de conteúdo impróprio ou qualquer atividade que viole leis vigentes.</p>
+      <p><strong class="text-slate-300">2. Coleta de dados (LGPD)</strong><br>
+        Seus dados (nome, e-mail, CPF, celular) são coletados para identificação conforme a
+        Lei Geral de Proteção de Dados (Lei nº 13.709/2018). Não compartilhamos com terceiros
+        sem seu consentimento.</p>
+      <p><strong class="text-slate-300">3. Monitoramento</strong><br>
+        O tráfego de rede pode ser monitorado para fins de segurança. Não monitorizamos
+        conteúdo de comunicações privadas.</p>
+      <p><strong class="text-slate-300">4. Disponibilidade</strong><br>
+        O acesso pode ser interrompido a qualquer momento por questões técnicas ou de segurança.
+        Não garantimos velocidade ou disponibilidade ininterrupta.</p>
+      <p><strong class="text-slate-300">5. Direitos do titular</strong><br>
+        Você pode solicitar acesso, correção ou exclusão dos seus dados a qualquer momento
+        pelo e-mail de contato.</p>
+    </div>
+    <div class="border-t border-white/8 px-5 py-3">
+      <button onclick="acceptAndClose()"
+              class="w-full rounded-xl bg-teal-600 hover:bg-teal-500 py-2 text-sm font-semibold text-white transition">
+        Entendido — Aceitar
+      </button>
+    </div>
+  </div>
+</div>
+
 <script>
-  // Máscara de telefone
+  // ── Máscara telefone ───────────────────────────────────
   const mobileInput = document.getElementById('mobile');
   mobileInput.addEventListener('input', function() {
     let v = this.value.replace(/\D/g, '');
@@ -83,44 +143,50 @@
       v = v.length === 11
         ? `(${v.slice(0,2)}) ${v.slice(2,7)}-${v.slice(7)}`
         : `(${v.slice(0,2)}) ${v.slice(2,6)}-${v.slice(6)}`;
-    } else if (v.length >= 3) {
-      v = `(${v.slice(0,2)}) ${v.slice(2)}`;
-    } else if (v.length >= 1) {
-      v = `(${v}`;
-    }
+    } else if (v.length >= 3) { v = `(${v.slice(0,2)}) ${v.slice(2)}`; }
+    else if (v.length >= 1) { v = `(${v}`; }
     this.value = v;
   });
 
-  // Validação antes de submeter
+  // ── Validação ─────────────────────────────────────────
   document.getElementById('form-identify').addEventListener('submit', function(e) {
     let valid = true;
-    const email = document.getElementById('email');
-    const mobile = document.getElementById('mobile');
+    const email    = document.getElementById('email');
+    const mobile   = document.getElementById('mobile');
+    const terms    = document.getElementById('terms_accepted');
     const emailErr = document.getElementById('email-error');
-    const mobileErr = document.getElementById('mobile-error');
+    const mobileErr= document.getElementById('mobile-error');
+    const termsErr = document.getElementById('terms-error');
 
     if (!email.value || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.value)) {
-      email.classList.add('error');
-      emailErr.classList.remove('hidden');
-      valid = false;
-    } else {
-      email.classList.remove('error');
-      emailErr.classList.add('hidden');
-    }
+      email.classList.add('error'); emailErr.classList.remove('hidden'); valid = false;
+    } else { email.classList.remove('error'); emailErr.classList.add('hidden'); }
 
     const digits = mobile.value.replace(/\D/g, '');
     if (digits.length < 10 || digits.length > 11) {
-      mobile.classList.add('error');
-      mobileErr.classList.remove('hidden');
-      valid = false;
-    } else {
-      mobile.classList.remove('error');
-      mobileErr.classList.add('hidden');
-    }
+      mobile.classList.add('error'); mobileErr.classList.remove('hidden'); valid = false;
+    } else { mobile.classList.remove('error'); mobileErr.classList.add('hidden'); }
+
+    if (!terms.checked) {
+      termsErr.classList.remove('hidden'); valid = false;
+    } else { termsErr.classList.add('hidden'); }
 
     if (!valid) { e.preventDefault(); return; }
-    document.getElementById('btn-submit').disabled = true;
-    document.getElementById('btn-submit').textContent = 'Verificando...';
+    const btn = document.getElementById('btn-submit');
+    btn.disabled = true;
+    btn.innerHTML = '<svg class="inline mr-2 h-4 w-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0"/></svg>Verificando…';
+  });
+
+  // ── Modal Termos ──────────────────────────────────────
+  function openTerms()  { document.getElementById('modal-terms').classList.replace('hidden','flex'); }
+  function closeTerms() { document.getElementById('modal-terms').classList.replace('flex','hidden'); }
+  function acceptAndClose() {
+    document.getElementById('terms_accepted').checked = true;
+    document.getElementById('terms-error').classList.add('hidden');
+    closeTerms();
+  }
+  document.getElementById('modal-terms').addEventListener('click', function(e) {
+    if (e.target === this) closeTerms();
   });
 </script>
 {% endblock %}

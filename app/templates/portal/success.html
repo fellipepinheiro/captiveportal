@@ -2,17 +2,15 @@
 
 {% block steps %}
 <div class="mb-6 flex items-center justify-center">
+  {% for _ in range(3) %}
   <div class="step-dot done">
-    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
+         stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="20 6 9 17 4 12"/>
+    </svg>
   </div>
-  <div class="step-line done"></div>
-  <div class="step-dot done">
-    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-  </div>
-  <div class="step-line done"></div>
-  <div class="step-dot done">
-    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-  </div>
+  {% if not loop.last %}<div class="step-line done"></div>{% endif %}
+  {% endfor %}
 </div>
 {% endblock %}
 
@@ -21,35 +19,50 @@
 
   <!-- Ícone animado -->
   <div class="relative flex h-20 w-20 items-center justify-center">
-    <div class="absolute inset-0 animate-ping rounded-full opacity-20" style="background: {{ portal_btn_color | default('#0d9488') }}"></div>
-    <div class="relative flex h-20 w-20 items-center justify-center rounded-full" style="background: {{ portal_btn_color | default('#0d9488') }}25; border: 1px solid {{ portal_btn_color | default('#0d9488') }}50">
-      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="{{ portal_accent | default('#2dd4bf') }}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <div class="absolute inset-0 animate-ping rounded-full opacity-20"
+         style="background:{{ portal_btn_color | default('#0d9488') }}"></div>
+    <div class="relative flex h-20 w-20 items-center justify-center rounded-full"
+         style="background:{{ portal_btn_color | default('#0d9488') }}25; border:1px solid {{ portal_btn_color | default('#0d9488') }}50">
+      <svg width="36" height="36" viewBox="0 0 24 24" fill="none"
+           stroke="{{ portal_accent | default('#2dd4bf') }}" stroke-width="2"
+           stroke-linecap="round" stroke-linejoin="round">
         <polyline points="20 6 9 17 4 12"/>
       </svg>
     </div>
   </div>
 
   <div>
+    {% if name %}
+    <p class="text-sm text-slate-400 mb-1">Olá, <strong class="text-slate-200">{{ name }}</strong>!</p>
+    {% endif %}
     <h2 class="text-2xl font-bold text-slate-50">Acesso liberado!</h2>
-    <p class="mt-2 text-sm text-slate-400">Você está conectado à internet.</p>
+    <p class="mt-1 text-sm text-slate-400">Você está conectado à internet.</p>
   </div>
 
-  <!-- Barra de progresso do redirect -->
+  <!-- Barra de progresso -->
   <div class="w-full">
     <div class="mb-2 flex items-center justify-between text-xs text-slate-500">
       <span>Redirecionando em breve</span>
       <span id="countdown">5</span>s
     </div>
-    <div class="h-1.5 w-full overflow-hidden rounded-full" style="background: rgba(255,255,255,0.08)">
-      <div id="progress-bar" class="h-full rounded-full transition-all" style="background: {{ portal_btn_color | default('#0d9488') }}; width: 0%"></div>
+    <div class="h-1.5 w-full overflow-hidden rounded-full" style="background:rgba(255,255,255,0.08)">
+      <div id="progress-bar" class="h-full rounded-full transition-all duration-300"
+           style="background:{{ portal_btn_color | default('#0d9488') }}; width:0%"></div>
     </div>
   </div>
 
-  <p class="text-xs text-slate-600">
-    Se não redirecionar automaticamente,
-    <a href="{{ redirect_url or 'http://detectportal.firefox.com/success.txt' }}" class="text-slate-400 underline underline-offset-2">clique aqui</a>.
-  </p>
+  <!-- Botão manual -->
+  <a href="{{ redirect_url or 'http://google.com' }}"
+     class="btn-primary text-center no-underline inline-block"
+     style="text-decoration:none">
+    Acessar a internet agora
+  </a>
 
+  <p class="text-xs text-slate-600">
+    Se não redirecionar,
+    <a href="{{ redirect_url or 'http://google.com' }}"
+       class="text-slate-400 underline underline-offset-2">clique aqui</a>.
+  </p>
 </div>
 
 <script>
@@ -57,18 +70,13 @@
   let elapsed = 0;
   const bar = document.getElementById('progress-bar');
   const countEl = document.getElementById('countdown');
-  const redirectUrl = "{{ redirect_url | default('http://captive.apple.com') }}";
+  const redirectUrl = {{ (redirect_url or 'http://google.com') | tojson }};
 
-  const interval = setInterval(function() {
+  const iv = setInterval(function(){
     elapsed++;
-    const pct = (elapsed / totalSeconds) * 100;
-    bar.style.width = pct + '%';
+    bar.style.width = (elapsed / totalSeconds * 100) + '%';
     countEl.textContent = totalSeconds - elapsed;
-
-    if (elapsed >= totalSeconds) {
-      clearInterval(interval);
-      window.location.href = redirectUrl || 'http://captive.apple.com';
-    }
+    if (elapsed >= totalSeconds) { clearInterval(iv); window.location.href = redirectUrl; }
   }, 1000);
 </script>
 {% endblock %}
