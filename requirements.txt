@@ -10,6 +10,7 @@ cryptography>=42
 
 # Migrations
 alembic>=1.13,<2
+flask-migrate>=4.0,<5
 
 # HTTP client (integração UniFi)
 requests>=2.32
