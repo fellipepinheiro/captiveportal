@@ -23,6 +23,9 @@ bcrypt>=4.0
 # Rate limiting
 flask-limiter>=3.5
 
+# Logging estruturado
+structlog>=24.0
+
 # HTTP client (integracao UniFi)
 requests>=2.32
 urllib3>=2.2
@@ -31,4 +34,5 @@ urllib3>=2.2
 gunicorn>=22,<24
 
 # Configuracao / ambiente
+python-decouple>=3.8
 python-dotenv>=1.0
