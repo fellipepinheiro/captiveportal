@@ -43,3 +43,15 @@ config_by_name = {
     "production": ProductionConfig,
     "testing": TestingConfig,
 }
+
+
+def get_config(config_name=None):
+    """Retorna a classe de configuracao correspondente ao ambiente.
+
+    Usa a variavel de ambiente FLASK_ENV como fallback se config_name
+    nao for fornecido. Padrao: production.
+    """
+    if not config_name:
+        import os
+        config_name = os.getenv("FLASK_ENV", "production")
+    return config_by_name.get(config_name, ProductionConfig)
