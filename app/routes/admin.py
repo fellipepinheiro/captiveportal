@@ -21,9 +21,9 @@ def login():
 @bp.post("/login")
 @limiter.limit("10 per minute")
 def login_post():
-    email = request.form.get("email", "").strip().lower()
+    username = request.form.get("username", "").strip()
     password = request.form.get("password", "")
-    user = AdminUser.query.filter_by(email=email, active=True).first()
+    user = AdminUser.query.filter_by(username=username, is_active=True).first()
     if user and user.check_password(password):
         login_user(user)
         return redirect(url_for("admin.dashboard"))
@@ -67,7 +67,7 @@ def visitors():
     query = Visitor.query.order_by(Visitor.created_at.desc())
     if q:
         query = query.filter(
-            (Visitor.name.ilike(f"%{q}%")) | (Visitor.email.ilike(f"%{q}%"))
+            (Visitor.full_name.ilike(f"%{q}%")) | (Visitor.email.ilike(f"%{q}%"))
         )
     pagination = query.paginate(page=page, per_page=25)
     return render_template("admin/visitors.html", pagination=pagination, q=q)
@@ -79,9 +79,9 @@ def export_visitors():
     visitors_list = Visitor.query.order_by(Visitor.created_at.desc()).all()
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["ID", "Nome", "E-mail", "Telefone", "Ativo", "Cadastrado em"])
+    w.writerow(["ID", "Nome", "E-mail", "Celular", "Ativo", "Cadastrado em"])
     for v in visitors_list:
-        w.writerow([v.id, v.name, v.email, v.phone, v.active, v.created_at])
+        w.writerow([v.id, v.full_name, v.email, v.mobile, v.is_active, v.created_at])
     buf.seek(0)
     return Response(
         buf.getvalue(),

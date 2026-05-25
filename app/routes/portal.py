@@ -23,11 +23,11 @@ def _get_portal_session():
 @bp.get("/guest/s/default/")
 @bp.get("/guest/")
 def entry():
-    mac_client = request.args.get("id") or request.args.get("mac")
-    mac_ap = request.args.get("ap")
+    client_mac = request.args.get("id") or request.args.get("mac")
+    ap_mac = request.args.get("ap")
     ssid = request.args.get("ssid", "WiFi")
     redirect_url = request.args.get("url", "http://google.com")
-    portal_session = create_pending_session(mac_client, mac_ap, ssid, redirect_url)
+    portal_session = create_pending_session(client_mac, ap_mac, ssid, redirect_url)
     session[PORTAL_SESSION_KEY] = portal_session.id
     return render_template(
         "portal/start.html",
@@ -55,14 +55,14 @@ def check_visitor():
         flash("Numero de celular invalido.", "error")
         return redirect(url_for("portal.entry"))
 
-    visitor = Visitor.find_by_email_or_phone(email, phone)
+    visitor = Visitor.find_by_email_or_mobile(email, phone)
     if visitor:
         ok = authorize_visitor(portal_session, visitor)
         if ok:
             return render_template(
                 "portal/success.html",
                 redirect_url=portal_session.redirect_url,
-                name=visitor.name,
+                name=visitor.full_name,
             )
         flash("Nao foi possivel autorizar o acesso agora. Tente novamente.", "error")
         return redirect(url_for("portal.entry"))
@@ -97,7 +97,7 @@ def register_submit():
 
     email = session.get("reg_email", "").strip().lower()
     phone = session.get("reg_phone", "").strip()
-    name = request.form.get("name", "").strip()
+    full_name = request.form.get("name", "").strip()
     cpf = request.form.get("cpf", "").strip()
     marketing_optin = bool(request.form.get("marketing_optin"))
     terms_accepted = bool(request.form.get("terms_accepted"))
@@ -105,14 +105,14 @@ def register_submit():
     if not terms_accepted:
         flash("Voce precisa aceitar os Termos de Uso para continuar.", "error")
         return redirect(url_for("portal.register"))
-    if not name or len(name) < 3:
+    if not full_name or len(full_name) < 3:
         flash("Nome invalido.", "error")
         return redirect(url_for("portal.register"))
     if not validate_cpf(cpf):
         flash("CPF invalido.", "error")
         return redirect(url_for("portal.register"))
 
-    visitor = Visitor.create(name=name, email=email, phone=phone, cpf=cpf)
+    visitor = Visitor.create(full_name=full_name, email=email, mobile=phone, cpf=cpf)
     db.session.flush()
     record_consent(visitor, marketing_optin=marketing_optin)
     db.session.commit()
@@ -125,7 +125,7 @@ def register_submit():
         return render_template(
             "portal/success.html",
             redirect_url=portal_session.redirect_url,
-            name=visitor.name,
+            name=visitor.full_name,
         )
     flash("Cadastro realizado, mas nao foi possivel autorizar agora. Tente novamente.", "error")
     return redirect(url_for("portal.entry"))

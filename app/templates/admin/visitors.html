@@ -20,7 +20,7 @@
           <tr>
             <th class="px-4 py-3 text-left">Nome</th>
             <th class="px-4 py-3 text-left">E-mail</th>
-            <th class="px-4 py-3 text-left">Telefone</th>
+            <th class="px-4 py-3 text-left">Celular</th>
             <th class="px-4 py-3 text-left">Status</th>
             <th class="px-4 py-3 text-left">Cadastrado</th>
           </tr>
@@ -28,11 +28,11 @@
         <tbody class="divide-y divide-gray-50">
           {% for v in pagination.items %}
           <tr class="hover:bg-gray-50">
-            <td class="px-4 py-3 font-medium text-gray-900">{{ v.name }}</td>
+            <td class="px-4 py-3 font-medium text-gray-900">{{ v.full_name }}</td>
             <td class="px-4 py-3 text-gray-600">{{ v.email }}</td>
-            <td class="px-4 py-3 text-gray-600">{{ v.phone }}</td>
+            <td class="px-4 py-3 text-gray-600">{{ v.mobile }}</td>
             <td class="px-4 py-3">
-              {% if v.active %}<span class="text-xs font-medium text-green-700 bg-green-50 rounded-full px-2 py-0.5">Ativo</span>
+              {% if v.is_active %}<span class="text-xs font-medium text-green-700 bg-green-50 rounded-full px-2 py-0.5">Ativo</span>
               {% else %}<span class="text-xs font-medium text-gray-500 bg-gray-100 rounded-full px-2 py-0.5">Inativo</span>{% endif %}
             </td>
             <td class="px-4 py-3 text-gray-400 text-xs">{{ v.created_at.strftime('%d/%m/%Y') if v.created_at }}</td>

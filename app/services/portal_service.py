@@ -8,15 +8,14 @@ from app.services.unifi_api import get_unifi, UnifiAPIError
 logger = structlog.get_logger(__name__)
 
 
-def create_pending_session(mac_client, mac_ap, ssid, redirect_url) -> PortalSession:
+def create_pending_session(client_mac, ap_mac, ssid, redirect_url) -> PortalSession:
     s = PortalSession(
-        mac_client=(mac_client or "UNKNOWN").upper(),
-        mac_ap=(mac_ap or "").upper(),
+        client_mac=(client_mac or "UNKNOWN").upper(),
+        ap_mac=(ap_mac or "").upper() or None,
         ssid=ssid,
         redirect_url=redirect_url,
         ip_address=flask_request.remote_addr,
         user_agent=flask_request.user_agent.string[:512],
-        unifi_site_id=current_app.config["UNIFI_SITE_ID"],
     )
     db.session.add(s)
     db.session.commit()
@@ -27,22 +26,24 @@ def authorize_visitor(portal_session: PortalSession, visitor: Visitor) -> bool:
     portal_session.visitor_id = visitor.id
     try:
         api = get_unifi()
-        site_id = portal_session.unifi_site_id or current_app.config["UNIFI_SITE_ID"]
-        client = api.find_client_by_mac(site_id, portal_session.mac_client)
+        site_id = current_app.config["UNIFI_SITE_ID"]
+        client = api.find_client_by_mac(site_id, portal_session.client_mac)
         if not client:
-            logger.warning("unifi_client_not_found", mac=portal_session.mac_client)
+            logger.warning("unifi_client_not_found", mac=portal_session.client_mac)
             db.session.commit()
             return False
-        client_id = client.get("id") or client.get("clientId") or client.get("_id")
+        unifi_client_id = (
+            client.get("id") or client.get("clientId") or client.get("_id")
+        )
         minutes = current_app.config["UNIFI_SESSION_MINUTES"]
-        api.authorize_guest(site_id, client_id, minutes)
+        api.authorize_guest(site_id, unifi_client_id, minutes)
         expires_at = datetime.now(timezone.utc) + timedelta(minutes=minutes)
-        portal_session.mark_authorized(client_id, expires_at)
+        portal_session.mark_authorized(unifi_client_id, expires_at)
         db.session.commit()
-        logger.info("guest_authorized", mac=portal_session.mac_client, visitor_id=visitor.id)
+        logger.info("guest_authorized", mac=portal_session.client_mac, visitor_id=visitor.id)
         return True
     except UnifiAPIError as e:
-        logger.error("authorization_failed", error=str(e), mac=portal_session.mac_client)
+        logger.error("authorization_failed", error=str(e), mac=portal_session.client_mac)
         db.session.commit()
         return False
 
