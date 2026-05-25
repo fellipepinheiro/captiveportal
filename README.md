@@ -1,61 +1,72 @@
-# UniFi Captive Portal com Flask
+# Captive Portal WiFi — UniFi
 
-Captive portal externo integrado ao UniFi Network usando Flask, SQLAlchemy, Alembic, MySQL, Tailwind CSS, Docker Compose e Let's Encrypt.
+Portal de acesso WiFi para redes UniFi, desenvolvido com **Flask, MySQL, Alembic e Tailwind CSS**.
 
-## Fluxo
+## Funcionalidades
 
-1. UniFi redireciona o cliente para `/guest/s/default/?ap=...&id=...&ssid=...&url=...`.
-2. O portal pede e-mail e celular.
-3. Se o visitante já existir por e-mail ou celular, autoriza o acesso no UniFi.
-4. Se não existir, pede nome e CPF, cadastra e depois autoriza.
+- Redirecionamento do UniFi para o portal externo
+- Identificacao de visitantes por **e-mail + celular**
+- Cadastro de novos visitantes com **nome + CPF** (validado pelo algoritmo)
+- Consentimento LGPD com versionamento de termos
+- CPF armazenado apenas como **hash SHA-256** (privacidade by design)
+- Autorizacao automatica via **API UniFi** (AUTHORIZE_GUEST_ACCESS)
+- Painel administrativo com dashboard e exportacao CSV
+- Rate limiting, CSRF, login seguro com bcrypt
+- Pronto para Docker + Nginx
 
-## Instalação (desenvolvimento)
+## Estrutura
 
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-alembic upgrade head
-flask --app wsgi.py run --debug
+```
+app/
+  models/        # Visitor, PortalSession, ConsentRecord, AdminUser
+  services/      # unifi_api.py, portal_service.py, validator.py
+  routes/        # portal.py, admin.py, health.py
+  templates/     # portal/ e admin/ (Jinja2 + Tailwind CDN)
+migrations/      # Alembic
 ```
 
-## Deploy com Docker Compose
+## Inicio rapido
 
 ```bash
-# 1. Configurar variáveis
+# 1. Copie o .env
 cp .env.example .env
-# editar .env com suas credenciais reais
+# edite DATABASE_URL, SECRET_KEY, UNIFI_BASE_URL, UNIFI_API_KEY
 
-# 2. Subir serviços
-docker compose up -d db migrator web nginx certbot-renew
+# 2. Docker Compose
+docker compose up -d
 
-# 3. Emitir certificado Let's Encrypt
-chmod +x scripts/init-letsencrypt.sh
-./scripts/init-letsencrypt.sh
+# 3. Migrate
+docker compose exec app flask db upgrade
 
-# 4. Descomentar bloco HTTPS em nginx/conf.d/portal.conf
-# 5. Recarregar Nginx
-docker compose restart nginx
+# 4. Criar admin
+docker compose exec app flask create-admin admin@empresa.com
 ```
 
-## Configuração UniFi
+## Configuracao UniFi
 
-- Habilite `Hotspot > Captive Portal` no SSID guest.
-- Use `External Portal Server` apontando para a URL pública do Flask.
-- Garanta que o host do portal esteja acessível pela rede guest.
-- Configure `UNIFI_BASE_URL`, `UNIFI_API_KEY` e `UNIFI_SITE_ID` no `.env`.
+No UniFi Network:
+1. Hotspot > **Captive Portal** > habilitar
+2. Tipo de autenticacao: **External Portal Server**
+3. URL do portal externo: `http://<seu-servidor>/guest/s/default/`
+4. Gere uma **API Key** em Settings > API > Add API Key
+5. Configure `UNIFI_API_KEY` no `.env`
 
-## Renovação SSL
+## Rotas
 
-A renovação do certificado é **totalmente automática**:
-- `certbot-renew`: verifica a cada 12h e renova quando faltam < 30 dias.
-- `--deploy-hook`: envia sinal HUP ao Nginx apenas quando o certificado é efetivamente renovado.
+| Metodo | Rota | Descricao |
+|--------|------|-----------|
+| GET | `/guest/s/default/` | Entrada do portal (redirect UniFi) |
+| POST | `/guest/check` | Verifica visitante existente |
+| GET/POST | `/guest/cadastro` | Formulario de cadastro |
+| GET | `/admin/` | Dashboard |
+| GET | `/admin/visitantes` | Lista de visitantes |
+| GET | `/admin/visitantes/export` | Export CSV |
+| GET | `/health` | Health check |
 
-## Próximos passos recomendados
+## Seguranca e LGPD
 
-- Validar CPF, e-mail e telefone com feedback visual.
-- Adicionar tela de termos/LGPD.
-- Criar painel administrativo para consultas e exportações.
-- Implementar testes unitários e tratamento de exceções da API UniFi.
-- Substituir Tailwind Play CDN por build local/CLI em produção.
+- CPF nunca e armazenado em texto claro — apenas SHA-256
+- Consentimento versionado com IP e user-agent
+- Rate limiting por IP nas rotas criticas
+- CSRF em todos os formularios
+- Sessoes seguras (Secure + HttpOnly + SameSite em producao)
