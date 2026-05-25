@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime, timezone, timedelta
 import structlog
 from flask import current_app, request as flask_request
+from requests.exceptions import ConnectionError as RequestsConnectionError, Timeout, RequestException
 from app.extensions import db
 from app.models import Visitor, PortalSession, ConsentEvent
 from app.services.unifi_api import get_unifi, UnifiAPIError
@@ -46,8 +47,13 @@ def authorize_visitor(portal_session: PortalSession, visitor: Visitor) -> bool:
         db.session.commit()
         logger.info("guest_authorized", mac=portal_session.client_mac, visitor_id=visitor.id)
         return True
-    except UnifiAPIError as e:
-        logger.error("authorization_failed", error=str(e), mac=portal_session.client_mac)
+    except (UnifiAPIError, RequestsConnectionError, Timeout, RequestException) as e:
+        logger.error(
+            "authorization_failed",
+            error=str(e),
+            mac=portal_session.client_mac,
+            error_type=type(e).__name__,
+        )
         db.session.commit()
         return False
 

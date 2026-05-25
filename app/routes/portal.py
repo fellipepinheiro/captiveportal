@@ -2,6 +2,7 @@ from flask import (
     Blueprint, render_template, request, redirect,
     session, url_for, flash, current_app
 )
+from sqlalchemy.exc import IntegrityError
 from app.extensions import db, limiter
 from app.models import Visitor, PortalSession
 from app.services.portal_service import (
@@ -112,9 +113,26 @@ def register_submit():
         flash("CPF invalido.", "error")
         return redirect(url_for("portal.register"))
 
-    visitor = Visitor.create(full_name=full_name, email=email, mobile=phone, cpf=cpf)
-    db.session.flush()
-    record_consent(visitor, marketing_optin=marketing_optin)
+    # Verifica se ja existe visitante com este CPF (evita IntegrityError 1062)
+    visitor = Visitor.query.filter_by(cpf=cpf).first()
+    created = False
+    if visitor is None:
+        visitor = Visitor.create(full_name=full_name, email=email, mobile=phone, cpf=cpf)
+        db.session.add(visitor)
+        try:
+            db.session.flush()
+            created = True
+        except IntegrityError:
+            # Race condition: outro request inseriu entre o SELECT e o INSERT
+            db.session.rollback()
+            visitor = Visitor.query.filter_by(cpf=cpf).first()
+            if visitor is None:
+                flash("Erro ao cadastrar. Tente novamente.", "error")
+                return redirect(url_for("portal.register"))
+
+    if created:
+        record_consent(visitor, marketing_optin=marketing_optin)
+
     db.session.commit()
 
     ok = authorize_visitor(portal_session, visitor)
