@@ -24,9 +24,18 @@ class Visitor(db.Model):
         onupdate=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+    # Colunas LGPD adicionadas na migration 0003
+    consent_version = db.Column(db.String(20), nullable=True)
+    consent_ip = db.Column(db.String(45), nullable=True)
+    consent_channel = db.Column(db.String(50), nullable=True)
+    marketing_opt_in = db.Column(db.Boolean, default=False, nullable=False, server_default="0")
+    data_deleted_at = db.Column(db.DateTime, nullable=True)
+    anonymized_at = db.Column(db.DateTime, nullable=True)
+    data_request_at = db.Column(db.DateTime, nullable=True)
 
     sessions = db.relationship("PortalSession", back_populates="visitor", lazy="dynamic")
-    consents = db.relationship("ConsentRecord", back_populates="visitor", lazy="dynamic")
+    consent_events = db.relationship("ConsentEvent", back_populates="visitor", lazy="dynamic")
+    data_requests = db.relationship("DataSubjectRequest", back_populates="visitor", lazy="dynamic")
 
     @classmethod
     def find_by_email_or_mobile(cls, email: str, mobile: str):

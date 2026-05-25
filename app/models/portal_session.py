@@ -25,6 +25,10 @@ class PortalSession(db.Model):
         onupdate=lambda: datetime.now(timezone.utc),
         nullable=False,
     )
+    # Colunas adicionadas na migration 0003
+    site_id = db.Column(db.String(64), nullable=True)
+    correlation_id = db.Column(db.String(36), nullable=True, index=True)
+    consent_version = db.Column(db.String(20), nullable=True)
 
     visitor = db.relationship("Visitor", back_populates="sessions")
 
