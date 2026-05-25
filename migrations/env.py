@@ -1,12 +1,18 @@
+import os
 from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import engine_from_config, pool
-from app.config import Config
+
+# Importa os models para que o metadata seja populado
 from app.extensions import db
 from app.models import *  # noqa: F401,F403
 
 config = context.config
-config.set_main_option('sqlalchemy.url', Config.SQLALCHEMY_DATABASE_URI)
+
+# Le a URL do banco da variavel de ambiente em runtime
+# Isso garante que o Docker injete a variavel corretamente
+db_url = os.environ.get('DATABASE_URL') or config.get_main_option('sqlalchemy.url')
+config.set_main_option('sqlalchemy.url', db_url)
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
