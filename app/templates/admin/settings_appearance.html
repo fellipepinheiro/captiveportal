@@ -14,7 +14,7 @@
     {% if has_logo %}
       <div class="mb-4 flex items-center gap-4">
         <img src="/static/uploads/logo.png?t={{ range(1,99999)|random }}"
-             alt="Logo atual" class="h-14 max-w-[160px] rounded-xl object-contain border border-white/10" loading="lazy">
+             alt="Logo atual" class="h-16 max-w-[180px] rounded-xl object-contain border border-white/10" loading="lazy">
         <form method="post" action="{{ url_for('admin.remove_logo') }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="text-xs text-rose-400 hover:text-rose-300 transition">Remover</button>
@@ -45,6 +45,24 @@
         Salvar logo
       </button>
     </form>
+
+    <!-- Título abaixo da logo -->
+    <div class="mt-5 border-t border-white/5 pt-5">
+      <h3 class="text-xs font-medium text-slate-400 mb-3">Título abaixo da logo</h3>
+      <p class="text-xs text-slate-500 mb-3">Aparece somente quando uma logo estiver ativa. Deixe em branco para ocultar.</p>
+      <form method="post" action="{{ url_for('admin.settings_logo_title_save') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="text" name="logo_title" value="{{ cfg.get('logo_title', '') }}"
+               placeholder="Ex.: BNTC Tecnologia"
+               class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-100
+                      focus:outline-none focus:border-teal-500/50 transition mb-3">
+        <button type="submit"
+                class="w-full rounded-xl border border-teal-500/30 bg-teal-500/10 hover:bg-teal-500/20
+                       py-2 text-sm font-medium text-teal-300 transition">
+          Salvar título
+        </button>
+      </form>
+    </div>
   </div>
 
   <!-- Textos -->
