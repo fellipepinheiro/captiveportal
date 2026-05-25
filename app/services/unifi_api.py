@@ -1,7 +1,8 @@
 import requests
 import structlog
 from tenacity import (
-    retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+    retry, stop_after_attempt, wait_exponential, retry_if_exception_type,
+    RetryError,
 )
 from flask import current_app
 
@@ -27,24 +28,34 @@ class UnifiAPI:
 
     @retry(
         stop=stop_after_attempt(3),
-        wait=wait_exponential(multiplier=1, min=1, max=8),
+        wait=wait_exponential(multiplier=1, min=1, max=4),
         retry=retry_if_exception_type(requests.RequestException),
-        reraise=True,
+        reraise=False,  # deixa o RetryError ser levantado; convertemos abaixo
     )
+    def _request_inner(self, method: str, path: str, **kwargs):
+        url = f"{self.base_url}{path}"
+        resp = self._session.request(
+            method, url, verify=self.verify_ssl, timeout=8, **kwargs
+        )
+        resp.raise_for_status()
+        return resp.json() if resp.content else {}
+
     def _request(self, method: str, path: str, **kwargs):
         url = f"{self.base_url}{path}"
         try:
-            resp = self._session.request(
-                method, url, verify=self.verify_ssl, timeout=10, **kwargs
-            )
-            resp.raise_for_status()
-            return resp.json() if resp.content else {}
+            return self._request_inner(method, path, **kwargs)
+        except RetryError as e:
+            # tenacity esgotou as tentativas; a causa raiz e uma requests.RequestException
+            cause = e.last_attempt.exception()
+            logger.error("unifi_request_error", url=url, error=str(cause))
+            raise UnifiAPIError(f"UniFi unreachable: {cause}") from cause
         except requests.HTTPError as e:
             logger.error("unifi_http_error", status=e.response.status_code, url=url)
             raise UnifiAPIError(f"UniFi API HTTP {e.response.status_code}") from e
         except requests.RequestException as e:
+            # captura qualquer erro de conexao que nao passou pelo retry
             logger.error("unifi_request_error", url=url, error=str(e))
-            raise
+            raise UnifiAPIError(f"UniFi request error: {e}") from e
 
     def get_sites(self) -> list:
         return self._request("GET", "/v1/sites")
