@@ -1,6 +1,7 @@
 import os
 import logging
 import requests
+from flask import current_app
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -10,8 +11,13 @@ DEV_MODE = os.getenv('FLASK_ENV') == 'development'
 DEFAULT_TIMEOUT = int(os.getenv('UNIFI_TIMEOUT', '20'))
 
 
+class UnifiAPIError(Exception):
+    """Excecao base para erros da API UniFi."""
+    pass
+
+
 def _build_session(api_key: str) -> requests.Session:
-    """Cria sessão com retry automático (3x para erros 5xx/502/503)."""
+    """Cria sessao com retry automatico (3x para erros 5xx/502/503)."""
     session = requests.Session()
     session.headers.update({
         'Authorization': f'Bearer {api_key}',
@@ -30,6 +36,15 @@ def _build_session(api_key: str) -> requests.Session:
     return session
 
 
+def get_unifi() -> 'UnifiAPI':
+    """Factory que cria um UnifiAPI a partir das configs da app Flask atual."""
+    return UnifiAPI(
+        base_url=current_app.config.get('UNIFI_BASE_URL', ''),
+        api_key=current_app.config.get('UNIFI_API_KEY', ''),
+        timeout=int(current_app.config.get('UNIFI_TIMEOUT', DEFAULT_TIMEOUT)),
+    )
+
+
 class UnifiAPI:
     """Cliente para a API UniFi Network (v1).
 
@@ -46,7 +61,7 @@ class UnifiAPI:
         if not self.mock:
             self.session = _build_session(api_key)
         else:
-            logger.info('[UniFi] Modo MOCK ativo — nenhuma chamada real será feita.')
+            logger.info('[UniFi] Modo MOCK ativo — nenhuma chamada real sera feita.')
 
     # ------------------------------------------------------------------
     # Sites
@@ -60,13 +75,13 @@ class UnifiAPI:
             return resp.json()
         except Exception as exc:
             logger.error('[UniFi] get_sites falhou: %s', exc)
-            raise
+            raise UnifiAPIError(str(exc)) from exc
 
     # ------------------------------------------------------------------
     # Clientes
     # ------------------------------------------------------------------
     def find_client_by_mac(self, site_id: str, mac_address: str) -> dict | None:
-        """Retorna o dict do cliente ou None se não encontrado."""
+        """Retorna o dict do cliente ou None se nao encontrado."""
         if self.mock:
             logger.debug('[MOCK UniFi] find_client_by_mac site=%s mac=%s', site_id, mac_address)
             return {'id': f'mock-client-{mac_address}', 'macAddress': (mac_address or '').upper()}
@@ -82,7 +97,7 @@ class UnifiAPI:
             data = resp.json()
         except Exception as exc:
             logger.error('[UniFi] find_client_by_mac falhou (mac=%s): %s', mac, exc)
-            raise
+            raise UnifiAPIError(str(exc)) from exc
 
         if isinstance(data, list):
             return data[0] if data else None
@@ -90,7 +105,7 @@ class UnifiAPI:
         return items[0] if items else None
 
     # ------------------------------------------------------------------
-    # Autorização
+    # Autorizacao
     # ------------------------------------------------------------------
     def authorize_guest(
         self,
@@ -100,13 +115,7 @@ class UnifiAPI:
         upload_limit_kbps: int = 0,
         download_limit_kbps: int = 0,
     ) -> dict:
-        """Autoriza o acesso do guest por X minutos.
-
-        Args:
-            minutes: Duração em minutos (0 = ilimitado).
-            upload_limit_kbps: Rate limit de upload em kbps (0 = sem limite).
-            download_limit_kbps: Rate limit de download em kbps (0 = sem limite).
-        """
+        """Autoriza o acesso do guest por X minutos."""
         if self.mock:
             logger.debug(
                 '[MOCK UniFi] authorize_guest site=%s client=%s minutes=%s',
@@ -134,10 +143,10 @@ class UnifiAPI:
             return resp.json() if resp.content else {'ok': True}
         except Exception as exc:
             logger.error('[UniFi] authorize_guest falhou (client=%s): %s', client_id, exc)
-            raise
+            raise UnifiAPIError(str(exc)) from exc
 
     # ------------------------------------------------------------------
-    # Revogação (opcional)
+    # Revogacao (opcional)
     # ------------------------------------------------------------------
     def revoke_guest(self, site_id: str, client_id: str) -> dict:
         """Revoga o acesso de um guest autorizado."""
@@ -156,4 +165,4 @@ class UnifiAPI:
             return resp.json() if resp.content else {'ok': True}
         except Exception as exc:
             logger.error('[UniFi] revoke_guest falhou (client=%s): %s', client_id, exc)
-            raise
+            raise UnifiAPIError(str(exc)) from exc
