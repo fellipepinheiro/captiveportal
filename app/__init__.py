@@ -1,25 +1,30 @@
-import os
 from flask import Flask
-from app.extensions import db
+from app.extensions import db, migrate, csrf, limiter, login_manager
 
 
 def create_app(config_name=None):
     app = Flask(__name__, template_folder='templates')
 
-    # Carrega configurações
+    # Carrega configuracoes
     from app.config import get_config
     app.config.from_object(get_config(config_name))
 
-    # Inicializa extensões
+    # Inicializa extensoes
     db.init_app(app)
+    migrate.init_app(app, db)
+    csrf.init_app(app)
+    limiter.init_app(app)
+    login_manager.init_app(app)
 
     # Registra blueprints
     from app.routes.portal import bp as portal_bp
     from app.routes.admin import bp as admin_bp
+    from app.routes.health import bp as health_bp
     app.register_blueprint(portal_bp)
     app.register_blueprint(admin_bp, url_prefix='/admin')
+    app.register_blueprint(health_bp)
 
-    # Context processor: injeta variáveis do portal em todos os templates
+    # Context processor: injeta variaveis do portal em todos os templates
     @app.context_processor
     def inject_portal_vars():
         try:
