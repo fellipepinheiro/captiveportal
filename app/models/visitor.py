@@ -1,73 +1,61 @@
-from datetime import datetime
+import hashlib
+import re
+from datetime import datetime, timezone
 from app.extensions import db
 
 
+def _hash_cpf(cpf: str) -> str:
+    normalized = re.sub(r"\D", "", cpf)
+    return hashlib.sha256(normalized.encode()).hexdigest()
+
+
+def _normalize_phone(phone: str) -> str:
+    return re.sub(r"\D", "", phone)
+
+
 class Visitor(db.Model):
-    __tablename__ = 'visitors'
+    __tablename__ = "visitors"
 
     id = db.Column(db.Integer, primary_key=True)
-    full_name = db.Column(db.String(150), nullable=False)
-    cpf = db.Column(db.String(11), unique=True, nullable=False, index=True)
-    email = db.Column(db.String(150), nullable=False, index=True)
-    mobile = db.Column(db.String(20), nullable=False, index=True)
-    is_active = db.Column(db.Boolean, nullable=False, default=True)
-
-    # Consentimento LGPD
-    consent_at = db.Column(db.DateTime, nullable=True)
-    consent_version = db.Column(db.String(20), nullable=True)        # ex: "v1.0"
-    consent_ip = db.Column(db.String(45), nullable=True)             # IP do aceite
-    consent_channel = db.Column(db.String(50), nullable=True)        # ex: "portal_wifi"
-    marketing_opt_in = db.Column(db.Boolean, nullable=False, default=False)
-
-    # Ciclo de vida dos dados (LGPD Art. 18)
-    data_deleted_at = db.Column(db.DateTime, nullable=True)          # exclusão solicitada
-    anonymized_at = db.Column(db.DateTime, nullable=True)            # anonimização executada
-    data_request_at = db.Column(db.DateTime, nullable=True)          # última solicitação do titular
-
-    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    name = db.Column(db.String(120), nullable=False)
+    email = db.Column(db.String(180), nullable=False, index=True)
+    phone = db.Column(db.String(20), nullable=False, index=True)
+    cpf_hash = db.Column(db.String(64), unique=True, nullable=False)
+    active = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(
-        db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+        db.DateTime,
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
     )
 
-    sessions = db.relationship('PortalSession', back_populates='visitor', lazy=True)
-    consent_events = db.relationship('ConsentEvent', back_populates='visitor', lazy=True)
-    data_requests = db.relationship('DataSubjectRequest', back_populates='visitor', lazy=True)
+    sessions = db.relationship("PortalSession", back_populates="visitor", lazy="dynamic")
+    consents = db.relationship("ConsentRecord", back_populates="visitor", lazy="dynamic")
 
-    # ---------------------------------------------------------------------------
-    # Propriedades de mascaramento — use estas em logs, templates e audit payloads
-    # NUNCA exponha os campos brutos em contextos de log ou exibição pública
-    # ---------------------------------------------------------------------------
+    @classmethod
+    def find_by_email_or_phone(cls, email: str, phone: str):
+        norm_phone = _normalize_phone(phone)
+        return cls.query.filter(
+            (cls.email == email.lower()) | (cls.phone == norm_phone)
+        ).first()
 
-    @property
-    def cpf_masked(self):
-        """Retorna CPF mascarado: ***.***.<últimos3>-**"""
-        if not self.cpf:
-            return None
-        c = self.cpf.zfill(11)
-        return f'***.***.{c[6:9]}-**'
+    @classmethod
+    def create(cls, name: str, email: str, phone: str, cpf: str) -> "Visitor":
+        v = cls(
+            name=name.strip(),
+            email=email.lower().strip(),
+            phone=_normalize_phone(phone),
+            cpf_hash=_hash_cpf(cpf),
+        )
+        db.session.add(v)
+        return v
 
-    @property
-    def email_masked(self):
-        """Retorna email mascarado: pr***@dominio.com"""
-        if not self.email or '@' not in self.email:
-            return None
-        user, domain = self.email.split('@', 1)
-        visible = user[:2] if len(user) >= 2 else user[:1]
-        return f'{visible}***@{domain}'
-
-    @property
-    def mobile_masked(self):
-        """Retorna celular mascarado: (XX) ***-XXXX"""
-        if not self.mobile:
-            return None
-        digits = ''.join(filter(str.isdigit, self.mobile))
-        if len(digits) >= 10:
-            return f'({digits[:2]}) ***-{digits[-4:]}'
-        return f'***-{digits[-4:]}' if len(digits) >= 4 else '***'
-
-    @property
-    def is_anonymized(self):
-        return self.anonymized_at is not None
-
-    def __repr__(self):
-        return f'<Visitor id={self.id} email={self.email_masked} cpf={self.cpf_masked}>'
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "email": self.email,
+            "phone": self.phone,
+            "active": self.active,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+        }
