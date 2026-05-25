@@ -23,8 +23,14 @@ services:
   migrator:
     build: .
     container_name: unifi_portal_migrator
-    command: alembic upgrade head
+    # Usa o script com retry em vez de chamar alembic diretamente
+    command: ["/bin/sh", "/app/scripts/migrate.sh"]
     env_file: .env
+    environment:
+      DB_HOST: db
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-unifi_portal}
+      MYSQL_USER: ${MYSQL_USER:-portal}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-portalsecret}
     restart: "no"
     depends_on:
       db:
