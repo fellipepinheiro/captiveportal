@@ -1,11 +1,13 @@
 import csv
 import io
+import json
 import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from flask import (
     Blueprint, render_template, request, redirect,
-    url_for, flash, Response, current_app
+    url_for, flash, Response, current_app, jsonify
 )
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.utils import secure_filename
@@ -41,7 +43,6 @@ def _load_cfg() -> dict:
         val = SiteConfig.get(key)
         if val is not None:
             cfg[key] = val
-    # Campos extras (nao estao em _DEFAULT_CFG mas precisam aparecer no template)
     cfg['logo_title'] = SiteConfig.get('logo_title') or ''
     return cfg
 
@@ -83,6 +84,7 @@ def dashboard():
     total_visitors = Visitor.query.count()
     total_sessions = PortalSession.query.count()
     authorized_sessions = PortalSession.query.filter_by(authorized=True).count()
+    auth_rate = round((authorized_sessions / total_sessions * 100) if total_sessions else 0, 1)
     recent = (
         PortalSession.query
         .order_by(PortalSession.created_at.desc())
@@ -94,6 +96,7 @@ def dashboard():
         total_visitors=total_visitors,
         total_sessions=total_sessions,
         authorized_sessions=authorized_sessions,
+        auth_rate=auth_rate,
         recent=recent,
     )
 
@@ -105,13 +108,39 @@ def dashboard():
 def visitors():
     page = request.args.get("page", 1, type=int)
     q = request.args.get("q", "").strip()
+    show_blocked = request.args.get("blocked", "") == "1"
     query = Visitor.query.order_by(Visitor.created_at.desc())
     if q:
         query = query.filter(
             (Visitor.full_name.ilike(f"%{q}%")) | (Visitor.email.ilike(f"%{q}%"))
         )
+    if show_blocked:
+        query = query.filter(Visitor.is_blocked == True)
     pagination = query.paginate(page=page, per_page=25)
-    return render_template("admin/visitors.html", pagination=pagination, q=q)
+    return render_template("admin/visitors.html", pagination=pagination, q=q, show_blocked=show_blocked)
+
+
+@bp.post("/visitantes/<int:vid>/bloquear")
+@login_required
+def visitor_block(vid: int):
+    visitor = Visitor.query.get_or_404(vid)
+    reason = request.form.get("reason", "").strip() or "Bloqueado pelo administrador"
+    visitor.is_blocked  = True
+    visitor.block_reason = reason
+    db.session.commit()
+    flash(f"Visitante '{visitor.full_name}' bloqueado.", "success")
+    return redirect(url_for("admin.visitors"))
+
+
+@bp.post("/visitantes/<int:vid>/desbloquear")
+@login_required
+def visitor_unblock(vid: int):
+    visitor = Visitor.query.get_or_404(vid)
+    visitor.is_blocked   = False
+    visitor.block_reason = None
+    db.session.commit()
+    flash(f"Visitante '{visitor.full_name}' desbloqueado.", "success")
+    return redirect(url_for("admin.visitors"))
 
 
 @bp.get("/visitantes/export")
@@ -120,15 +149,186 @@ def export_visitors():
     visitors_list = Visitor.query.order_by(Visitor.created_at.desc()).all()
     buf = io.StringIO()
     w = csv.writer(buf)
-    w.writerow(["ID", "Nome", "E-mail", "Celular", "Ativo", "Cadastrado em"])
+    w.writerow(["ID", "Nome", "E-mail", "Celular", "CPF", "Visitas", "Último acesso", "Bloqueado", "Cadastrado em"])
     for v in visitors_list:
-        w.writerow([v.id, v.full_name, v.email, v.mobile, v.is_active, v.created_at])
+        w.writerow([
+            v.id, v.full_name, v.email, v.mobile, v.cpf,
+            v.visit_count or 0,
+            v.last_seen.isoformat() if v.last_seen else "",
+            "Sim" if v.is_blocked else "Não",
+            v.created_at,
+        ])
     buf.seek(0)
     return Response(
         buf.getvalue(),
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment; filename=visitantes.csv"},
     )
+
+
+# ─── Reports ─────────────────────────────────────────────────────────────────
+
+@bp.get("/relatorios")
+@login_required
+def reports():
+    return render_template("admin/reports.html")
+
+
+@bp.get("/relatorios/dados")
+@login_required
+def reports_data():
+    """
+    API JSON para o gráfico de acessos por dia.
+    Parâmetros:
+      days  – janela em dias (padrão 30, máx 365)
+    Retorna:
+      { labels: [...], sessions: [...], authorized: [...], new_visitors: [...] }
+    """
+    days = min(int(request.args.get("days", 30)), 365)
+    since = datetime.now(timezone.utc) - timedelta(days=days)
+
+    # Sessões por dia
+    from sqlalchemy import func, cast, Date
+    sessions_by_day = (
+        db.session.query(
+            cast(PortalSession.created_at, Date).label("day"),
+            func.count().label("total"),
+            func.sum(db.case((PortalSession.authorized == True, 1), else_=0)).label("auth"),
+        )
+        .filter(PortalSession.created_at >= since)
+        .group_by(cast(PortalSession.created_at, Date))
+        .order_by(cast(PortalSession.created_at, Date))
+        .all()
+    )
+
+    # Novos visitantes por dia
+    visitors_by_day = (
+        db.session.query(
+            cast(Visitor.created_at, Date).label("day"),
+            func.count().label("total"),
+        )
+        .filter(Visitor.created_at >= since)
+        .group_by(cast(Visitor.created_at, Date))
+        .order_by(cast(Visitor.created_at, Date))
+        .all()
+    )
+
+    # Montar série de datas completa
+    date_range = [(since + timedelta(days=i)).date() for i in range(days + 1)]
+    sessions_map  = {str(r.day): (r.total, r.auth)   for r in sessions_by_day}
+    visitors_map  = {str(r.day): r.total              for r in visitors_by_day}
+
+    labels        = [d.strftime("%d/%m") for d in date_range]
+    sessions_data = [sessions_map.get(str(d), (0, 0))[0] for d in date_range]
+    auth_data     = [sessions_map.get(str(d), (0, 0))[1] for d in date_range]
+    new_vis_data  = [visitors_map.get(str(d), 0)         for d in date_range]
+
+    # Totais do período
+    total_s  = sum(sessions_data)
+    total_a  = sum(auth_data)
+    total_v  = sum(new_vis_data)
+    rate     = round(total_a / total_s * 100, 1) if total_s else 0
+
+    # Device breakdown
+    device_rows = (
+        db.session.query(PortalSession.device_type, func.count().label("n"))
+        .filter(PortalSession.created_at >= since)
+        .group_by(PortalSession.device_type)
+        .all()
+    )
+    device_data = [{
+        "name": r.device_type or "desconhecido",
+        "value": r.n,
+    } for r in device_rows]
+
+    # OS breakdown
+    os_rows = (
+        db.session.query(PortalSession.os_hint, func.count().label("n"))
+        .filter(PortalSession.created_at >= since)
+        .group_by(PortalSession.os_hint)
+        .all()
+    )
+    os_data = [{
+        "name": r.os_hint or "Desconhecido",
+        "value": r.n,
+    } for r in os_rows]
+
+    return jsonify({
+        "labels":       labels,
+        "sessions":     sessions_data,
+        "authorized":   auth_data,
+        "new_visitors": new_vis_data,
+        "totals": {
+            "sessions":     total_s,
+            "authorized":   total_a,
+            "new_visitors": total_v,
+            "auth_rate":    rate,
+        },
+        "device_data": device_data,
+        "os_data":     os_data,
+    })
+
+
+# ─── Webhook settings ────────────────────────────────────────────────────────
+
+@bp.get("/integracoes")
+@login_required
+def integrations():
+    webhook_url     = SiteConfig.get("webhook_url", "")
+    webhook_secret  = SiteConfig.get("webhook_secret", "")
+    webhook_enabled = SiteConfig.get("webhook_enabled", "false") == "true"
+    return render_template(
+        "admin/integrations.html",
+        webhook_url=webhook_url,
+        webhook_secret=webhook_secret,
+        webhook_enabled=webhook_enabled,
+    )
+
+
+@bp.post("/integracoes/salvar")
+@login_required
+def integrations_save():
+    SiteConfig.set("webhook_url",     request.form.get("webhook_url", "").strip())
+    SiteConfig.set("webhook_secret",  request.form.get("webhook_secret", "").strip())
+    SiteConfig.set("webhook_enabled", "true" if request.form.get("webhook_enabled") else "false")
+    db.session.commit()
+    flash("Configurações de integração salvas.", "success")
+    return redirect(url_for("admin.integrations"))
+
+
+@bp.post("/integracoes/testar")
+@login_required
+def integrations_test():
+    """Dispara um webhook de teste (payload fake) para validar a URL."""
+    url    = SiteConfig.get("webhook_url", "").strip()
+    secret = SiteConfig.get("webhook_secret", "changeme")
+    if not url:
+        flash("Configure a URL do webhook primeiro.", "error")
+        return redirect(url_for("admin.integrations"))
+
+    import hashlib, hmac, json, urllib.request
+    payload = {
+        "event": "webhook_test",
+        "message": "Teste de integração do Captive Portal",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    body = json.dumps(payload, default=str).encode()
+    sig  = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+    try:
+        req = urllib.request.Request(
+            url, data=body,
+            headers={
+                "Content-Type": "application/json",
+                "X-Webhook-Signature": f"sha256={sig}",
+                "X-Webhook-Event": "webhook_test",
+            },
+            method="POST",
+        )
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            flash(f"Webhook enviado com sucesso (HTTP {resp.status}).", "success")
+    except Exception as exc:
+        flash(f"Falha ao enviar webhook: {exc}", "error")
+    return redirect(url_for("admin.integrations"))
 
 
 # ─── Appearance ──────────────────────────────────────────────────────────────
@@ -187,7 +387,6 @@ def upload_logo():
     UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
     logo_path = UPLOAD_FOLDER / "logo.png"
     logo_path.write_bytes(data)
-    # Registra a URL da logo no banco para o context_processor injetar nos templates
     SiteConfig.set("custom_logo_url", "/static/uploads/logo.png")
     db.session.commit()
     flash("Logo atualizada com sucesso.", "success")
@@ -200,7 +399,6 @@ def remove_logo():
     logo_path = UPLOAD_FOLDER / "logo.png"
     if logo_path.exists():
         logo_path.unlink()
-    # Remove a referencia da logo do banco
     SiteConfig.set("custom_logo_url", "")
     db.session.commit()
     flash("Logo removida.", "success")

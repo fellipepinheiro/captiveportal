@@ -1,0 +1,124 @@
+{% extends 'admin/base_admin.html' %}
+{% block title %}Relatórios{% endblock %}
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold text-white">Relatórios de Acesso</h1>
+  <div class="flex gap-2" id="periodButtons">
+    <button onclick="loadData(7)"  data-days="7"  class="period-btn px-3 py-1.5 rounded text-sm bg-white/10 text-white/70 hover:bg-white/20">7 dias</button>
+    <button onclick="loadData(30)" data-days="30" class="period-btn px-3 py-1.5 rounded text-sm bg-teal-600 text-white">30 dias</button>
+    <button onclick="loadData(90)" data-days="90" class="period-btn px-3 py-1.5 rounded text-sm bg-white/10 text-white/70 hover:bg-white/20">90 dias</button>
+  </div>
+</div>
+
+<!-- KPIs do período -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+  <div class="bg-white/5 border border-white/10 rounded-xl p-4">
+    <p class="text-white/50 text-xs uppercase mb-1">Sessões</p>
+    <p id="kpi-sessions" class="text-2xl font-bold text-white tabular-nums">—</p>
+  </div>
+  <div class="bg-white/5 border border-white/10 rounded-xl p-4">
+    <p class="text-white/50 text-xs uppercase mb-1">Autorizadas</p>
+    <p id="kpi-authorized" class="text-2xl font-bold text-teal-400 tabular-nums">—</p>
+  </div>
+  <div class="bg-white/5 border border-white/10 rounded-xl p-4">
+    <p class="text-white/50 text-xs uppercase mb-1">Novos visitantes</p>
+    <p id="kpi-visitors" class="text-2xl font-bold text-white tabular-nums">—</p>
+  </div>
+  <div class="bg-white/5 border border-white/10 rounded-xl p-4">
+    <p class="text-white/50 text-xs uppercase mb-1">Taxa de autenticação</p>
+    <p id="kpi-rate" class="text-2xl font-bold text-emerald-400 tabular-nums">—</p>
+  </div>
+</div>
+
+<!-- Gráfico de linha: acessos por dia -->
+<div class="bg-white/5 border border-white/10 rounded-xl p-4 mb-6">
+  <h2 class="text-white/70 text-sm uppercase mb-3">Acessos por dia</h2>
+  <div id="chartLine" style="height:300px"></div>
+</div>
+
+<!-- Gráficos de pizza -->
+<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+  <div class="bg-white/5 border border-white/10 rounded-xl p-4">
+    <h2 class="text-white/70 text-sm uppercase mb-3">Dispositivos</h2>
+    <div id="chartDevice" style="height:240px"></div>
+  </div>
+  <div class="bg-white/5 border border-white/10 rounded-xl p-4">
+    <h2 class="text-white/70 text-sm uppercase mb-3">Sistemas operacionais</h2>
+    <div id="chartOS" style="height:240px"></div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+<script>
+const COLORS = ['#14b8a6','#6366f1','#f59e0b','#ef4444','#8b5cf6','#22c55e'];
+
+const chartLine   = echarts.init(document.getElementById('chartLine'),   'dark');
+const chartDevice = echarts.init(document.getElementById('chartDevice'), 'dark');
+const chartOS     = echarts.init(document.getElementById('chartOS'),     'dark');
+
+[chartLine, chartDevice, chartOS].forEach(c => {
+  c.getZr().getRenderer();
+  c.setOption({ backgroundColor: 'transparent' });
+});
+
+function setPeriodBtn(days) {
+  document.querySelectorAll('.period-btn').forEach(b => {
+    const active = parseInt(b.dataset.days) === days;
+    b.className = `period-btn px-3 py-1.5 rounded text-sm ${
+      active ? 'bg-teal-600 text-white' : 'bg-white/10 text-white/70 hover:bg-white/20'
+    }`;
+  });
+}
+
+async function loadData(days = 30) {
+  setPeriodBtn(days);
+  const res  = await fetch(`/admin/relatorios/dados?days=${days}`);
+  const data = await res.json();
+
+  // KPIs
+  document.getElementById('kpi-sessions').textContent   = data.totals.sessions.toLocaleString('pt-BR');
+  document.getElementById('kpi-authorized').textContent = data.totals.authorized.toLocaleString('pt-BR');
+  document.getElementById('kpi-visitors').textContent   = data.totals.new_visitors.toLocaleString('pt-BR');
+  document.getElementById('kpi-rate').textContent       = data.totals.auth_rate + '%';
+
+  // Gráfico linha
+  chartLine.setOption({
+    tooltip: { trigger: 'axis' },
+    legend: { data: ['Sessões','Autorizadas','Novos visitantes'], textStyle: { color: '#94a3b8' } },
+    grid:  { left: '3%', right: '3%', bottom: '3%', containLabel: true },
+    xAxis: { type: 'category', data: data.labels, axisLabel: { color: '#94a3b8', interval: Math.floor(data.labels.length / 10) } },
+    yAxis: { type: 'value', axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#ffffff15' } } },
+    series: [
+      { name: 'Sessões',          type: 'line', data: data.sessions,     smooth: true, areaStyle: { opacity: 0.15 }, color: COLORS[0], lineStyle: { width: 2 } },
+      { name: 'Autorizadas',      type: 'line', data: data.authorized,   smooth: true, areaStyle: { opacity: 0.10 }, color: COLORS[1], lineStyle: { width: 2 } },
+      { name: 'Novos visitantes', type: 'bar',  data: data.new_visitors, color: COLORS[2], opacity: 0.7, barMaxWidth: 12 },
+    ],
+  });
+
+  // Device pie
+  chartDevice.setOption({
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+    legend: { bottom: 0, textStyle: { color: '#94a3b8' } },
+    series: [{
+      type: 'pie', radius: ['40%','70%'], center: ['50%','45%'],
+      label: { show: false },
+      data: data.device_data.map((d,i) => ({ ...d, itemStyle: { color: COLORS[i % COLORS.length] } })),
+    }],
+  });
+
+  // OS pie
+  chartOS.setOption({
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+    legend: { bottom: 0, textStyle: { color: '#94a3b8' } },
+    series: [{
+      type: 'pie', radius: ['40%','70%'], center: ['50%','45%'],
+      label: { show: false },
+      data: data.os_data.map((d,i) => ({ ...d, itemStyle: { color: COLORS[i % COLORS.length] } })),
+    }],
+  });
+}
+
+window.addEventListener('resize', () => [chartLine, chartDevice, chartOS].forEach(c => c.resize()));
+loadData(30);
+</script>
+{% endblock %}

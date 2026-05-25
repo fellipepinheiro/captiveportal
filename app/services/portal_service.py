@@ -28,11 +28,19 @@ def create_pending_session(client_mac, ap_mac, ssid, redirect_url) -> PortalSess
 
 def authorize_visitor(portal_session: PortalSession, visitor: Visitor) -> bool:
     try:
-        portal_session.visitor_id   = visitor.id
-        portal_session.authorized   = True
+        portal_session.visitor_id    = visitor.id
+        portal_session.authorized    = True
         portal_session.authorized_at = datetime.now(timezone.utc)
         visitor.touch()
         db.session.commit()
+
+        # ── Webhook pós-autorização ────────────────────────────────────────
+        try:
+            from app.services.webhook_service import fire_authorized
+            fire_authorized(portal_session, visitor)
+        except Exception:
+            pass  # nunca bloqueia o fluxo principal
+
         return True
     except Exception:
         db.session.rollback()

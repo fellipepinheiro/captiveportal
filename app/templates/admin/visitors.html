@@ -1,112 +1,126 @@
-{% extends 'admin/base.html' %}
+{% extends 'admin/base_admin.html' %}
 {% block title %}Visitantes{% endblock %}
 {% block content %}
-
-<div class="mb-6 flex flex-wrap items-center justify-between gap-3">
-  <div>
-    <h1 class="text-xl font-semibold">Visitantes</h1>
-    <p class="text-sm text-slate-400 mt-0.5">{{ pagination.total }} cadastros</p>
-  </div>
+<div class="flex items-center justify-between mb-6">
+  <h1 class="text-2xl font-bold text-white">Visitantes</h1>
   <div class="flex gap-2">
-    <a href="{{ url_for('admin.export_visitors') }}"
-       class="flex items-center gap-2 rounded-xl border border-teal-500/30 bg-teal-500/10
-              px-4 py-2 text-sm text-teal-300 hover:bg-teal-500/20 transition">
-      <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M12 16v-4m0 0V8m0 4H8m4 0h4M20 12a8 8 0 1 1-16 0 8 8 0 0 1 16 0"/>
-      </svg>
-      Exportar CSV
+    <a href="{{ url_for('admin.visitors', blocked='1') }}"
+       class="px-3 py-2 rounded text-sm {% if show_blocked %}bg-red-700 text-white{% else %}bg-white/10 text-white/70 hover:bg-white/20{% endif %}">
+      🚫 Bloqueados
     </a>
+    <a href="{{ url_for('admin.export_visitors') }}"
+       class="px-3 py-2 bg-white/10 hover:bg-white/20 text-white text-sm rounded">⬇ Exportar CSV</a>
   </div>
 </div>
 
 <!-- Busca -->
-<form method="get" class="mb-5">
-  <div class="relative">
-    <svg class="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500"
-         fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-      <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
-    </svg>
-    <input type="search" name="q" value="{{ q }}"
-           placeholder="Buscar por nome ou e-mail…"
-           class="w-full rounded-xl bg-slate-900 border border-white/10 pl-10 pr-4 py-2.5
-                  text-sm text-slate-200 placeholder-slate-500
-                  focus:outline-none focus:border-teal-500/50 transition">
-  </div>
+<form method="get" class="mb-4 flex gap-2">
+  <input type="text" name="q" value="{{ q }}" placeholder="Buscar por nome ou e-mail…"
+    class="flex-1 rounded bg-white/10 border border-white/20 text-white px-3 py-2 text-sm placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-teal-400">
+  <button class="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded text-sm">Buscar</button>
+  {% if q %}<a href="{{ url_for('admin.visitors') }}" class="px-3 py-2 bg-white/10 text-white/70 rounded text-sm">Limpar</a>{% endif %}
 </form>
 
-<!-- Tabela -->
-<div class="bg-slate-900 border border-white/5 rounded-2xl overflow-hidden">
-  <div class="overflow-x-auto">
-    <table class="w-full text-sm">
-      <thead>
-        <tr class="text-xs text-slate-500 border-b border-white/5">
-          <th class="text-left px-5 py-3 font-medium">Nome</th>
-          <th class="text-left px-5 py-3 font-medium hidden md:table-cell">Contato</th>
-          <th class="text-left px-5 py-3 font-medium hidden lg:table-cell">Visitas</th>
-          <th class="text-left px-5 py-3 font-medium hidden lg:table-cell">Último acesso</th>
-          <th class="text-left px-5 py-3 font-medium">Status</th>
-          <th class="text-left px-5 py-3 font-medium">Cadastro</th>
-        </tr>
-      </thead>
-      <tbody class="divide-y divide-white/5">
-        {% for v in pagination.items %}
-        <tr class="hover:bg-white/3 transition">
-          <td class="px-5 py-3">
-            <p class="font-medium text-slate-200">{{ v.full_name }}</p>
-            <p class="text-xs text-slate-500">CPF: {{ v.cpf }}</p>
-          </td>
-          <td class="px-5 py-3 hidden md:table-cell">
-            <p class="text-xs text-slate-300">{{ v.email }}</p>
-            <p class="text-xs text-slate-500">{{ v.mobile }}</p>
-          </td>
-          <td class="px-5 py-3 hidden lg:table-cell">
-            <span class="text-sm font-semibold text-slate-200">{{ v.visit_count or 0 }}</span>
-            <span class="text-xs text-slate-500"> acessos</span>
-          </td>
-          <td class="px-5 py-3 hidden lg:table-cell text-xs text-slate-500">
-            {{ v.last_seen.strftime('%d/%m/%Y %H:%M') if v.last_seen else '—' }}
-          </td>
-          <td class="px-5 py-3">
-            {% if v.is_blocked %}
-            <span class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-rose-500/15 text-rose-400">Bloqueado</span>
-            {% elif v.is_active %}
-            <span class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-500/15 text-emerald-400">Ativo</span>
-            {% else %}
-            <span class="inline-flex rounded-full px-2 py-0.5 text-xs font-medium bg-slate-500/15 text-slate-500">Inativo</span>
-            {% endif %}
-          </td>
-          <td class="px-5 py-3 text-xs text-slate-500">
-            {{ v.created_at.strftime('%d/%m/%Y') if v.created_at else '—' }}
-          </td>
-        </tr>
-        {% else %}
-        <tr>
-          <td colspan="6" class="px-5 py-10 text-center text-sm text-slate-600">
-            {% if q %}Nenhum visitante encontrado para "{{ q }}".{% else %}Nenhum visitante cadastrado ainda.{% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-  </div>
-
-  <!-- Paginação -->
-  {% if pagination.pages > 1 %}
-  <div class="flex items-center justify-between border-t border-white/5 px-5 py-3">
-    <p class="text-xs text-slate-500">
-      Exibindo {{ pagination.items|length }} de {{ pagination.total }}
-    </p>
-    <div class="flex gap-1">
-      {% if pagination.has_prev %}
-      <a href="?page={{ pagination.prev_num }}{% if q %}&q={{ q }}{% endif %}"
-         class="rounded-lg px-3 py-1.5 text-xs text-slate-400 hover:bg-white/5 transition">← Anterior</a>
-      {% endif %}
-      {% if pagination.has_next %}
-      <a href="?page={{ pagination.next_num }}{% if q %}&q={{ q }}{% endif %}"
-         class="rounded-lg px-3 py-1.5 text-xs text-slate-400 hover:bg-white/5 transition">Próxima →</a>
-      {% endif %}
-    </div>
-  </div>
-  {% endif %}
+<div class="bg-white/5 rounded-xl overflow-hidden border border-white/10">
+  <table class="w-full text-sm text-white/80">
+    <thead class="bg-white/10 text-white/60 uppercase text-xs">
+      <tr>
+        <th class="px-4 py-3 text-left">Nome</th>
+        <th class="px-4 py-3 text-left">E-mail</th>
+        <th class="px-4 py-3 text-left">Celular</th>
+        <th class="px-4 py-3 text-center">Visitas</th>
+        <th class="px-4 py-3 text-left">Último acesso</th>
+        <th class="px-4 py-3 text-center">Status</th>
+        <th class="px-4 py-3 text-center">Ações</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-white/5">
+      {% for v in pagination.items %}
+      <tr class="hover:bg-white/5 transition-colors {% if v.is_blocked %}opacity-60{% endif %}">
+        <td class="px-4 py-3 font-medium text-white">
+          {{ v.full_name }}
+          {% if v.is_blocked %}<span class="ml-1 text-xs bg-red-700/60 text-red-200 px-1.5 py-0.5 rounded">bloqueado</span>{% endif %}
+        </td>
+        <td class="px-4 py-3">{{ v.email }}</td>
+        <td class="px-4 py-3">{{ v.mobile }}</td>
+        <td class="px-4 py-3 text-center tabular-nums">{{ v.visit_count or 0 }}</td>
+        <td class="px-4 py-3 text-white/50 text-xs">
+          {% if v.last_seen %}{{ v.last_seen.strftime('%d/%m/%Y %H:%M') }}{% else %}—{% endif %}
+        </td>
+        <td class="px-4 py-3 text-center">
+          {% if v.is_blocked %}
+            <span class="text-xs bg-red-900/50 text-red-300 px-2 py-1 rounded-full">🚫 Bloqueado</span>
+          {% else %}
+            <span class="text-xs bg-emerald-900/40 text-emerald-300 px-2 py-1 rounded-full">✅ Ativo</span>
+          {% endif %}
+        </td>
+        <td class="px-4 py-3 text-center">
+          {% if v.is_blocked %}
+            <form method="post" action="{{ url_for('admin.visitor_unblock', vid=v.id) }}" class="inline">
+              <button class="text-xs bg-emerald-700 hover:bg-emerald-600 text-white px-2 py-1 rounded"
+                onclick="return confirm('Desbloquear {{ v.full_name }}?')">Desbloquear</button>
+            </form>
+          {% else %}
+            <button onclick="openBlockModal({{ v.id }}, '{{ v.full_name | e }}')"
+              class="text-xs bg-red-700 hover:bg-red-600 text-white px-2 py-1 rounded">Bloquear</button>
+          {% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="px-4 py-8 text-center text-white/40">Nenhum visitante encontrado.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
 </div>
+
+<!-- Paginação -->
+{% if pagination.pages > 1 %}
+<div class="flex justify-center gap-2 mt-4">
+  {% for page_num in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+    {% if page_num %}
+      <a href="{{ url_for('admin.visitors', page=page_num, q=q) }}"
+         class="px-3 py-1 rounded text-sm {% if page_num == pagination.page %}bg-teal-600 text-white{% else %}bg-white/10 text-white/70 hover:bg-white/20{% endif %}">
+        {{ page_num }}
+      </a>
+    {% else %}
+      <span class="px-3 py-1 text-white/30">…</span>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- Modal bloquear -->
+<div id="blockModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/60">
+  <div class="bg-slate-800 border border-white/20 rounded-xl p-6 w-full max-w-md mx-4">
+    <h2 class="text-lg font-semibold text-white mb-1">Bloquear visitante</h2>
+    <p id="blockModalName" class="text-white/60 text-sm mb-4"></p>
+    <form id="blockForm" method="post">
+      <label class="block text-sm text-white/70 mb-1">Motivo do bloqueio</label>
+      <input type="text" name="reason" placeholder="Ex: Uso indevido da rede"
+        class="w-full rounded bg-white/10 border border-white/20 text-white px-3 py-2 text-sm placeholder-white/40 mb-4 focus:outline-none focus:ring-2 focus:ring-red-500">
+      <div class="flex justify-end gap-2">
+        <button type="button" onclick="closeBlockModal()"
+          class="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded text-sm">Cancelar</button>
+        <button type="submit"
+          class="px-4 py-2 bg-red-700 hover:bg-red-600 text-white rounded text-sm">Confirmar bloqueio</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openBlockModal(vid, name) {
+  document.getElementById('blockForm').action = `/admin/visitantes/${vid}/bloquear`;
+  document.getElementById('blockModalName').textContent = name;
+  document.getElementById('blockModal').classList.remove('hidden');
+  document.getElementById('blockModal').classList.add('flex');
+}
+function closeBlockModal() {
+  document.getElementById('blockModal').classList.add('hidden');
+  document.getElementById('blockModal').classList.remove('flex');
+}
+document.getElementById('blockModal').addEventListener('click', function(e) {
+  if (e.target === this) closeBlockModal();
+});
+</script>
 {% endblock %}
