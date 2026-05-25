@@ -16,12 +16,19 @@ flask-migrate>=4.0,<5
 flask-wtf>=1.2
 wtforms>=3.1
 
-# HTTP client (integração UniFi)
+# Autenticacao
+flask-login>=0.6
+bcrypt>=4.0
+
+# Rate limiting
+flask-limiter>=3.5
+
+# HTTP client (integracao UniFi)
 requests>=2.32
 urllib3>=2.2
 
-# Servidor WSGI (produção)
+# Servidor WSGI (producao)
 gunicorn>=22,<24
 
-# Configuração / ambiente
+# Configuracao / ambiente
 python-dotenv>=1.0
