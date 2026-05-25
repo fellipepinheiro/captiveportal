@@ -13,6 +13,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Garante diretorio de uploads com permissao de escrita
+RUN mkdir -p /app/app/static/uploads && chmod 777 /app/app/static/uploads
+
 EXPOSE 5000
 
-CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--workers", "2", "--timeout", "60", "wsgi:app"]
+# gthread: nao bloqueia no I/O de arquivo/upload
+# timeout 120s: suficiente para uploads lentos
+CMD ["gunicorn", "--bind", "0.0.0.0:5000", "--worker-class", "gthread", "--workers", "2", "--threads", "4", "--timeout", "120", "--graceful-timeout", "30", "wsgi:app"]
