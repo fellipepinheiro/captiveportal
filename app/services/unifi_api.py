@@ -1,5 +1,5 @@
 import requests
-
+import os
 
 class UnifiAPI:
     def __init__(self, base_url, api_key):
@@ -31,6 +31,9 @@ class UnifiAPI:
         return items[0] if items else None
 
     def authorize_guest(self, site_id, client_id, minutes=480):
+        if os.getenv("FLASK_ENV") == "development":
+            print(f"[MOCK] Autorizando {client_id} por {minutes} min")
+            return {"ok": True, "mock": True}
         payload = {
             'action': 'AUTHORIZE_GUEST_ACCESS',
             'timeLimitMinutes': minutes,
