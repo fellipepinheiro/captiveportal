@@ -1,63 +1,59 @@
 import os
 from flask import Flask
-from .config import Config
-from .extensions import db
-from .routes.portal import bp as portal_bp
-from .routes.admin import bp as admin_bp
+from app.extensions import db
 
 
-def create_app(config_class=Config):
-    app = Flask(__name__)
-    app.config.from_object(config_class)
+def create_app(config_name=None):
+    app = Flask(__name__, template_folder='templates')
 
-    # Garante diretorio de uploads
-    uploads_dir = os.path.join(app.root_path, 'static', 'uploads')
-    os.makedirs(uploads_dir, exist_ok=True)
+    # Carrega configurações
+    from app.config import get_config
+    app.config.from_object(get_config(config_name))
 
+    # Inicializa extensões
     db.init_app(app)
+
+    # Registra blueprints
+    from app.routes.portal import bp as portal_bp
+    from app.routes.admin import bp as admin_bp
     app.register_blueprint(portal_bp)
-    app.register_blueprint(admin_bp)
+    app.register_blueprint(admin_bp, url_prefix='/admin')
 
-    # Registra comandos CLI
-    from .cli import create_admin_cmd, list_admins_cmd
-    app.cli.add_command(create_admin_cmd)
-    app.cli.add_command(list_admins_cmd)
-
-    @app.get('/health')
-    def health():
-        return {'status': 'ok'}
-
+    # Context processor: injeta variáveis do portal em todos os templates
     @app.context_processor
-    def inject_portal_config():
-        """Injeta logo e configuracoes de aparencia em todos os templates."""
-        from .models.site_config import SiteConfig
-        logo_path = os.path.join(app.root_path, 'static', 'uploads', 'logo.png')
-        has_logo = os.path.exists(logo_path)
+    def inject_portal_vars():
         try:
-            portal_title = SiteConfig.get('portal_title', 'Portal Wi-Fi UniFi')
-            portal_welcome = SiteConfig.get('portal_welcome', 'Preencha seus dados para liberar o acesso à internet.')
-            portal_btn_color = SiteConfig.get('portal_btn_color', '#0f766e')
-            portal_bg_from = SiteConfig.get('portal_bg_from', '#020617')
-            portal_bg_via = SiteConfig.get('portal_bg_via', '#0f172a')
-            portal_bg_to = SiteConfig.get('portal_bg_to', '#1e293b')
-            portal_accent = SiteConfig.get('portal_accent', '#2dd4bf')
+            from app.models.site_config import SiteConfig
+            return dict(
+                portal_title=SiteConfig.get('portal_title') or 'Wi-Fi Visitantes',
+                portal_welcome=SiteConfig.get('portal_welcome') or 'Identifique-se para acessar a internet.',
+                portal_bg_from=SiteConfig.get('portal_bg_from') or '#0f172a',
+                portal_bg_via=SiteConfig.get('portal_bg_via') or '#1e1b4b',
+                portal_bg_to=SiteConfig.get('portal_bg_to') or '#0f172a',
+                portal_accent=SiteConfig.get('portal_accent') or '#2dd4bf',
+                portal_btn_color=SiteConfig.get('portal_btn_color') or '#0d9488',
+                portal_btn_hover=SiteConfig.get('portal_btn_hover') or '#0f766e',
+                custom_logo_url=SiteConfig.get('custom_logo_url') or '',
+                ssid='',
+                redirect_url='',
+            )
         except Exception:
-            portal_title = 'Portal Wi-Fi UniFi'
-            portal_welcome = 'Preencha seus dados para liberar o acesso à internet.'
-            portal_btn_color = '#0f766e'
-            portal_bg_from = '#020617'
-            portal_bg_via = '#0f172a'
-            portal_bg_to = '#1e293b'
-            portal_accent = '#2dd4bf'
-        return {
-            'custom_logo_url': '/static/uploads/logo.png' if has_logo else None,
-            'portal_title': portal_title,
-            'portal_welcome': portal_welcome,
-            'portal_btn_color': portal_btn_color,
-            'portal_bg_from': portal_bg_from,
-            'portal_bg_via': portal_bg_via,
-            'portal_bg_to': portal_bg_to,
-            'portal_accent': portal_accent,
-        }
+            return dict(
+                portal_title='Wi-Fi Visitantes',
+                portal_welcome='Identifique-se para acessar a internet.',
+                portal_bg_from='#0f172a',
+                portal_bg_via='#1e1b4b',
+                portal_bg_to='#0f172a',
+                portal_accent='#2dd4bf',
+                portal_btn_color='#0d9488',
+                portal_btn_hover='#0f766e',
+                custom_logo_url='',
+                ssid='',
+                redirect_url='',
+            )
+
+    # Registra CLI commands
+    from app.cli import register_commands
+    register_commands(app)
 
     return app

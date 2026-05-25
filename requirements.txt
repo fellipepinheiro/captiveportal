@@ -1,10 +1,22 @@
-flask>=3.1
-sqlalchemy>=2.0
-flask-sqlalchemy>=3.1
-alembic>=1.13
-pymysql
-cryptography
-gunicorn>=22
-werkzeug>=3.1
-python-dotenv
-requests
+# Web framework
+flask>=3.1,<4
+werkzeug>=3.1,<4
+
+# Banco de dados
+sqlalchemy>=2.0,<3
+flask-sqlalchemy>=3.1,<4
+pymysql>=1.1
+cryptography>=42
+
+# Migrations
+alembic>=1.13,<2
+
+# HTTP client (integração UniFi)
+requests>=2.32
+urllib3>=2.2
+
+# Servidor WSGI (produção)
+gunicorn>=22,<24
+
+# Configuração / ambiente
+python-dotenv>=1.0

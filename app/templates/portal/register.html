@@ -1,25 +1,146 @@
 {% extends 'portal/base.html' %}
+
+{% block steps %}
+<div class="mb-6 flex items-center justify-center">
+  <div class="step-dot done">
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+  </div>
+  <div class="step-line done"></div>
+  <div class="step-dot active">2</div>
+  <div class="step-line"></div>
+  <div class="step-dot pending">
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+  </div>
+</div>
+<p class="mb-6 text-center text-xs text-slate-500 -mt-3">Cadastro</p>
+{% endblock %}
+
 {% block content %}
-<form method="post" action="{{ url_for('portal.register') }}" class="space-y-5">
+<!-- Dados já informados -->
+<div class="mb-5 rounded-xl border border-white/8 bg-white/4 px-4 py-3 space-y-1">
+  <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Dados informados</p>
+  <div class="flex items-center gap-2 text-sm">
+    <svg class="h-3.5 w-3.5 shrink-0 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
+    <span class="text-slate-300 truncate">{{ email }}</span>
+  </div>
+  <div class="flex items-center gap-2 text-sm">
+    <svg class="h-3.5 w-3.5 shrink-0 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></svg>
+    <span class="text-slate-300">{{ mobile }}</span>
+  </div>
+</div>
+
+<form method="post" action="{{ url_for('portal.register') }}" class="space-y-4" id="form-register" novalidate>
+
   <div>
-    <label class="mb-2 block text-sm font-medium text-slate-200">Nome completo</label>
-    <input name="full_name" type="text" required
-           class="w-full rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3 outline-none placeholder:text-slate-500 focus:border-teal-400"
-           placeholder="Seu nome completo">
+    <label for="full_name" class="mb-1.5 block text-sm font-medium text-slate-300">
+      Nome completo
+    </label>
+    <div class="relative">
+      <span class="pointer-events-none absolute inset-y-0 left-3.5 flex items-center">
+        <svg class="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="8" r="4"/>
+          <path d="M6 20v-2a6 6 0 0 1 12 0v2"/>
+        </svg>
+      </span>
+      <input id="full_name" name="full_name" type="text" required autocomplete="name"
+             class="input-field pl-10"
+             placeholder="Seu nome completo"
+             value="{{ request.form.get('full_name', '') }}">
+    </div>
+    <p class="mt-1 hidden text-xs text-rose-400" id="name-error">Informe seu nome completo.</p>
   </div>
+
   <div>
-    <label class="mb-2 block text-sm font-medium text-slate-200">CPF</label>
-    <input name="cpf" type="text" required
-           class="w-full rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3 outline-none placeholder:text-slate-500 focus:border-teal-400"
-           placeholder="000.000.000-00">
+    <label for="cpf" class="mb-1.5 block text-sm font-medium text-slate-300">
+      CPF
+    </label>
+    <div class="relative">
+      <span class="pointer-events-none absolute inset-y-0 left-3.5 flex items-center">
+        <svg class="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect width="18" height="14" x="3" y="5" rx="2"/>
+          <path d="M3 10h18"/>
+        </svg>
+      </span>
+      <input id="cpf" name="cpf" type="text" required autocomplete="off"
+             class="input-field pl-10"
+             placeholder="000.000.000-00"
+             maxlength="14"
+             value="{{ request.form.get('cpf', '') }}">
+    </div>
+    <p class="mt-1 hidden text-xs text-rose-400" id="cpf-error">Informe um CPF válido.</p>
   </div>
-  <div class="rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 text-sm text-slate-300">
-    <p>E-mail informado: <strong>{{ email }}</strong></p>
-    <p>Celular informado: <strong>{{ mobile }}</strong></p>
+
+  <div class="pt-1 space-y-2">
+    <button type="submit" class="btn-primary" id="btn-register">
+      Cadastrar e liberar acesso
+    </button>
+    <a href="{{ url_for('portal.entry') }}" class="btn-ghost block text-center">
+      ← Voltar e corrigir dados
+    </a>
   </div>
-  <button type="submit"
-          class="w-full rounded-2xl bg-brand-500 px-4 py-3 font-medium text-white transition hover:bg-brand-600">
-    Cadastrar e liberar acesso
-  </button>
+
+  <p class="text-center text-xs text-slate-600">
+    Ao continuar, você concorda com o uso dos seus dados para identificação nesta rede.
+  </p>
+
 </form>
+
+<script>
+  // Máscara CPF
+  const cpfInput = document.getElementById('cpf');
+  cpfInput.addEventListener('input', function() {
+    let v = this.value.replace(/\D/g, '');
+    if (v.length > 11) v = v.slice(0, 11);
+    if (v.length > 9) v = `${v.slice(0,3)}.${v.slice(3,6)}.${v.slice(6,9)}-${v.slice(9)}`;
+    else if (v.length > 6) v = `${v.slice(0,3)}.${v.slice(3,6)}.${v.slice(6)}`;
+    else if (v.length > 3) v = `${v.slice(0,3)}.${v.slice(3)}`;
+    this.value = v;
+  });
+
+  // Validação CPF (algoritmo dígitos verificadores)
+  function validarCPF(cpf) {
+    const c = cpf.replace(/\D/g, '');
+    if (c.length !== 11 || /^(\d)\1+$/.test(c)) return false;
+    let s = 0;
+    for (let i = 0; i < 9; i++) s += parseInt(c[i]) * (10 - i);
+    let r = (s * 10) % 11;
+    if (r === 10 || r === 11) r = 0;
+    if (r !== parseInt(c[9])) return false;
+    s = 0;
+    for (let i = 0; i < 10; i++) s += parseInt(c[i]) * (11 - i);
+    r = (s * 10) % 11;
+    if (r === 10 || r === 11) r = 0;
+    return r === parseInt(c[10]);
+  }
+
+  document.getElementById('form-register').addEventListener('submit', function(e) {
+    let valid = true;
+    const nameInput = document.getElementById('full_name');
+    const cpfInput = document.getElementById('cpf');
+    const nameErr = document.getElementById('name-error');
+    const cpfErr = document.getElementById('cpf-error');
+
+    if (!nameInput.value.trim() || nameInput.value.trim().split(' ').length < 2) {
+      nameInput.classList.add('error');
+      nameErr.classList.remove('hidden');
+      valid = false;
+    } else {
+      nameInput.classList.remove('error');
+      nameErr.classList.add('hidden');
+    }
+
+    if (!validarCPF(cpfInput.value)) {
+      cpfInput.classList.add('error');
+      cpfErr.classList.remove('hidden');
+      valid = false;
+    } else {
+      cpfInput.classList.remove('error');
+      cpfErr.classList.add('hidden');
+    }
+
+    if (!valid) { e.preventDefault(); return; }
+    document.getElementById('btn-register').disabled = true;
+    document.getElementById('btn-register').textContent = 'Cadastrando...';
+  });
+</script>
 {% endblock %}
