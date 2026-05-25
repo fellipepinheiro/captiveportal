@@ -1,41 +1,50 @@
 {% extends 'admin/base.html' %}
 {% block title %}Dashboard{% endblock %}
 {% block content %}
-<h2 class="text-xl font-semibold mb-6">Dashboard</h2>
+<div class="mb-6">
+  <h1 class="text-xl font-semibold">Dashboard</h1>
+  <p class="text-sm text-slate-400 mt-0.5">Visão geral do portal captivo</p>
+</div>
 
+<!-- KPIs -->
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-  {% for label, value, color in [
-    ('Total Visitantes', total_visitors, 'teal'),
-    ('Sessões Autorizadas', total_sessions, 'blue'),
-    ('Acessos Hoje', today_sessions, 'green'),
-    ('Erros Hoje', errors_today, 'rose'),
+  {% for label, value, color, icon in [
+    ('Visitantes', total_visitors, 'teal', 'users'),
+    ('Sessões totais', total_sessions, 'blue', 'monitor'),
+    ('Autorizados', authorized_sessions, 'green', 'check-circle'),
+    ('Erros', error_logs, 'rose', 'alert-triangle'),
   ] %}
-  <div class="rounded-2xl border border-white/10 bg-white/5 p-5">
-    <p class="text-xs uppercase tracking-wider text-slate-400">{{ label }}</p>
-    <p class="mt-2 text-3xl font-bold text-{{ color }}-400">{{ value }}</p>
+  <div class="bg-slate-900 border border-white/5 rounded-2xl p-5">
+    <div class="flex items-center justify-between mb-3">
+      <span class="text-xs text-slate-400">{{ label }}</span>
+      <span class="h-8 w-8 rounded-lg bg-{{ color }}-500/10 flex items-center justify-center">
+        <i class="icon-{{ icon }} text-{{ color }}-400 text-sm"></i>
+      </span>
+    </div>
+    <p class="text-2xl font-semibold tabular-nums">{{ value }}</p>
   </div>
   {% endfor %}
 </div>
 
-<div class="rounded-2xl border border-white/10 bg-white/5 p-6">
-  <h3 class="text-sm font-semibold mb-4 text-slate-300">Últimos eventos</h3>
-  {% if recent_logs %}
-  <div class="space-y-2">
-    {% for log in recent_logs %}
-    <div class="flex items-center gap-3 rounded-xl bg-white/5 px-4 py-3 text-sm">
-      <span class="h-2 w-2 rounded-full shrink-0
-        {% if log.status == 'success' %}bg-teal-400{% else %}bg-rose-400{% endif %}"></span>
-      <span class="text-slate-300 flex-1">{{ log.event_type }}</span>
-      <span class="text-slate-500 text-xs font-mono">{{ log.payload or '—' }}</span>
-      <span class="text-slate-600 text-xs">{{ log.created_at.strftime('%d/%m %H:%M') if log.created_at else '' }}</span>
-    </div>
-    {% endfor %}
+<!-- Logs recentes -->
+<div class="bg-slate-900 border border-white/5 rounded-2xl overflow-hidden">
+  <div class="px-5 py-4 border-b border-white/5 flex items-center justify-between">
+    <h2 class="text-sm font-medium">Logs recentes</h2>
+    <a href="{{ url_for('admin.logs') }}" class="text-xs text-teal-400 hover:text-teal-300 transition">Ver todos →</a>
   </div>
-  {% else %}
-  <p class="text-sm text-slate-500">Nenhum evento registrado ainda.</p>
-  {% endif %}
-  <div class="mt-4">
-    <a href="{{ url_for('admin.logs') }}" class="text-xs text-teal-400 hover:text-teal-300 transition">Ver todos os logs →</a>
+  <div class="divide-y divide-white/5">
+    {% for log in recent_logs %}
+    <div class="px-5 py-3 flex items-center gap-3 text-sm">
+      <span class="h-2 w-2 rounded-full shrink-0 {% if log.status == 'success' %}bg-teal-400{% else %}bg-rose-400{% endif %}"></span>
+      <span class="flex-1 text-slate-300 truncate">{{ log.event_type }} — {{ log.payload or '—' }}</span>
+      {% if log.error_message %}
+        <span class="text-xs text-rose-400 truncate max-w-[180px]">{{ log.error_message }}</span>
+      {% endif %}
+      <span class="text-xs text-slate-500 shrink-0">{{ log.created_at.strftime('%d/%m %H:%M') }}</span>
+    </div>
+    {% else %}
+    <div class="px-5 py-8 text-center text-sm text-slate-500">Nenhum log ainda.</div>
+    {% endfor %}
   </div>
 </div>
 {% endblock %}

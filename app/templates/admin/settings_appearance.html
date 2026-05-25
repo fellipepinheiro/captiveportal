@@ -1,0 +1,119 @@
+{% extends 'admin/base.html' %}
+{% block title %}Aparência{% endblock %}
+{% block content %}
+<div class="mb-6">
+  <h1 class="text-xl font-semibold">Aparência do Portal</h1>
+  <p class="text-sm text-slate-400 mt-0.5">Personalize como o portal captivo é exibido para os visitantes.</p>
+</div>
+
+<div class="grid lg:grid-cols-2 gap-6">
+
+  <!-- Logo -->
+  <div class="bg-slate-900 border border-white/5 rounded-2xl p-6">
+    <h2 class="text-sm font-medium mb-4">Logo</h2>
+    {% if has_logo %}
+      <div class="mb-4 flex items-center gap-4">
+        <img src="/static/uploads/logo.png?t={{ range(1,99999)|random }}"
+             alt="Logo atual" class="h-14 max-w-[160px] rounded-xl object-contain border border-white/10" loading="lazy">
+        <form method="post" action="{{ url_for('admin.remove_logo') }}">
+          <button type="submit" class="text-xs text-rose-400 hover:text-rose-300 transition">Remover</button>
+        </form>
+      </div>
+    {% else %}
+      <p class="text-xs text-slate-500 mb-4">Nenhuma logo. O portal exibe o título padrão.</p>
+    {% endif %}
+    <form method="post" action="{{ url_for('admin.upload_logo') }}" enctype="multipart/form-data">
+      <div id="drop-area"
+           class="relative flex cursor-pointer flex-col items-center justify-center rounded-xl
+                  border-2 border-dashed border-white/15 bg-white/3 p-8 text-center transition
+                  hover:border-teal-500/40 hover:bg-white/5"
+           onclick="document.getElementById('logo-inp').click()">
+        <svg class="mb-2 h-8 w-8 text-slate-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+        </svg>
+        <p class="text-xs text-slate-400">PNG, JPG, SVG, WEBP — máx 2 MB</p>
+        <p id="fname" class="mt-1 text-xs text-teal-400"></p>
+        <input id="logo-inp" name="logo" type="file" accept=".png,.jpg,.jpeg,.svg,.webp"
+               class="absolute inset-0 opacity-0 cursor-pointer" onchange="setName(this)">
+      </div>
+      <div id="prev-wrap" class="hidden mt-3 justify-center">
+        <img id="prev-img" src="" alt="Preview" class="h-16 max-w-xs rounded-xl object-contain border border-white/10" loading="lazy">
+      </div>
+      <button type="submit" class="mt-4 w-full rounded-xl bg-teal-600 hover:bg-teal-500 py-2.5 text-sm font-semibold text-white transition">
+        Salvar logo
+      </button>
+    </form>
+  </div>
+
+  <!-- Textos -->
+  <div class="bg-slate-900 border border-white/5 rounded-2xl p-6">
+    <h2 class="text-sm font-medium mb-4">Textos</h2>
+    <form method="post" action="{{ url_for('admin.settings_appearance_save') }}" class="space-y-4">
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">Título do portal</label>
+        <input type="text" name="portal_title" value="{{ cfg.portal_title }}"
+               class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-100
+                      focus:outline-none focus:border-teal-500/50 transition">
+      </div>
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">Mensagem de boas-vindas</label>
+        <textarea name="portal_welcome" rows="3"
+                  class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-100
+                         focus:outline-none focus:border-teal-500/50 transition resize-none">{{ cfg.portal_welcome }}</textarea>
+      </div>
+
+      <!-- Paleta de cores -->
+      <div class="border-t border-white/5 pt-4">
+        <p class="text-xs font-medium text-slate-400 mb-3">Paleta de cores</p>
+        <div class="grid grid-cols-2 gap-3">
+          {% for key, label in [
+            ('portal_btn_color', 'Botão principal'),
+            ('portal_accent', 'Cor de destaque'),
+            ('portal_bg_from', 'Gradiente início'),
+            ('portal_bg_via', 'Gradiente meio'),
+            ('portal_bg_to', 'Gradiente fim'),
+          ] %}
+          <div class="flex items-center gap-2">
+            <input type="color" name="{{ key }}" value="{{ cfg[key] }}"
+                   class="h-9 w-9 rounded-lg cursor-pointer bg-transparent border border-white/10 p-0.5">
+            <label class="text-xs text-slate-400">{{ label }}</label>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+      <button type="submit" class="w-full rounded-xl bg-teal-600 hover:bg-teal-500 py-2.5 text-sm font-semibold text-white transition">
+        Salvar configurações
+      </button>
+    </form>
+  </div>
+
+</div>
+
+<!-- Preview -->
+<div class="mt-6 bg-slate-900 border border-white/5 rounded-2xl p-6">
+  <h2 class="text-sm font-medium mb-3">Preview do portal</h2>
+  <a href="/guest/s/default/?id=aa:bb:cc:00:00:01&ap=00:00:00:00:00:01&ssid=Preview"
+     target="_blank"
+     class="inline-flex items-center gap-2 rounded-xl border border-teal-500/30 bg-teal-500/10
+            px-4 py-2 text-sm text-teal-300 hover:bg-teal-500/20 transition">
+    <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
+    </svg>
+    Abrir portal do visitante
+  </a>
+</div>
+
+<script>
+function setName(inp){
+  document.getElementById('fname').textContent = inp.files[0]?.name || '';
+  const w=document.getElementById('prev-wrap'), i=document.getElementById('prev-img');
+  if(inp.files[0]){const r=new FileReader();r.onload=e=>{i.src=e.target.result;w.classList.remove('hidden');w.classList.add('flex')};r.readAsDataURL(inp.files[0])}
+  else{w.classList.add('hidden');w.classList.remove('flex')}
+}
+const a=document.getElementById('drop-area'),inp=document.getElementById('logo-inp');
+['dragenter','dragover'].forEach(e=>a.addEventListener(e,ev=>{ev.preventDefault();a.classList.add('border-teal-400/60')}));
+['dragleave','drop'].forEach(e=>a.addEventListener(e,ev=>{ev.preventDefault();a.classList.remove('border-teal-400/60')}));
+a.addEventListener('drop',e=>{if(e.dataTransfer.files.length){inp.files=e.dataTransfer.files;setName(inp)}});
+</script>
+{% endblock %}

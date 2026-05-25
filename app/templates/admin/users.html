@@ -1,0 +1,99 @@
+{% extends 'admin/base.html' %}
+{% block title %}Usuários{% endblock %}
+{% block content %}
+<div class="mb-6">
+  <h1 class="text-xl font-semibold">Usuários Administradores</h1>
+  <p class="text-sm text-slate-400 mt-0.5">Gerencie quem tem acesso ao painel admin.</p>
+</div>
+
+<div class="grid lg:grid-cols-2 gap-6">
+
+  <!-- Lista de usuarios -->
+  <div class="bg-slate-900 border border-white/5 rounded-2xl overflow-hidden">
+    <div class="px-5 py-4 border-b border-white/5">
+      <h2 class="text-sm font-medium">Usuários ativos</h2>
+    </div>
+    <div class="divide-y divide-white/5">
+      {% for u in users %}
+      <div class="px-5 py-4 flex items-center gap-3">
+        <div class="h-9 w-9 rounded-full bg-teal-600/20 flex items-center justify-center text-teal-300 text-sm font-bold shrink-0">
+          {{ u.username[0] | upper }}
+        </div>
+        <div class="flex-1 min-w-0">
+          <p class="text-sm font-medium truncate {% if not u.is_active %}line-through text-slate-500{% endif %}">
+            {{ u.username }}
+            {% if u.id == session.admin_id %}<span class="text-xs text-teal-400 font-normal ml-1">(você)</span>{% endif %}
+          </p>
+          <p class="text-xs text-slate-500">
+            Criado {{ u.created_at.strftime('%d/%m/%Y') }}
+            {% if u.last_login %} · Último login {{ u.last_login.strftime('%d/%m/%Y %H:%M') }}{% endif %}
+          </p>
+        </div>
+        <div class="flex items-center gap-1 shrink-0">
+          <span class="text-xs px-2 py-0.5 rounded-full {% if u.is_active %}bg-teal-500/10 text-teal-400{% else %}bg-slate-700 text-slate-500{% endif %}">
+            {{ 'Ativo' if u.is_active else 'Inativo' }}
+          </span>
+          <!-- Troca de senha -->
+          <button onclick="togglePwForm({{ u.id }})" class="text-xs text-slate-400 hover:text-teal-300 transition px-1">
+            🔑
+          </button>
+          {% if u.id != session.admin_id %}
+          <form method="post" action="{{ url_for('admin.user_toggle', uid=u.id) }}">
+            <button type="submit" class="text-xs text-slate-400 hover:text-amber-400 transition px-1">
+              {{ '🔴' if u.is_active else '🟢' }}
+            </button>
+          </form>
+          <form method="post" action="{{ url_for('admin.user_delete', uid=u.id) }}"
+                onsubmit="return confirm('Excluir usuário {{ u.username }}?')">
+            <button type="submit" class="text-xs text-slate-400 hover:text-rose-400 transition px-1">🗑</button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+      <!-- Form troca de senha (oculto) -->
+      <div id="pw-form-{{ u.id }}" class="hidden px-5 pb-4">
+        <form method="post" action="{{ url_for('admin.user_password', uid=u.id) }}" class="flex gap-2">
+          <input type="password" name="new_password" placeholder="Nova senha (mín. 8 caracteres)"
+                 class="flex-1 rounded-xl bg-white/5 border border-white/10 px-3 py-1.5 text-xs text-slate-100
+                        focus:outline-none focus:border-teal-500/50 transition">
+          <button type="submit" class="rounded-xl bg-teal-600 hover:bg-teal-500 px-3 py-1.5 text-xs font-semibold text-white transition">Salvar</button>
+        </form>
+      </div>
+      {% else %}
+      <div class="px-5 py-8 text-center text-sm text-slate-500">Nenhum usuário encontrado.</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Criar novo usuario -->
+  <div class="bg-slate-900 border border-white/5 rounded-2xl p-6">
+    <h2 class="text-sm font-medium mb-4">Criar novo usuário</h2>
+    <form method="post" action="{{ url_for('admin.user_create') }}" class="space-y-4">
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Usuário</label>
+        <input type="text" name="username" required autocomplete="off"
+               class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2.5 text-sm text-slate-100
+                      focus:outline-none focus:border-teal-500/50 transition">
+      </div>
+      <div>
+        <label class="block text-xs font-medium text-slate-400 mb-1.5">Senha</label>
+        <input type="password" name="password" required minlength="8"
+               class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2.5 text-sm text-slate-100
+                      focus:outline-none focus:border-teal-500/50 transition">
+        <p class="text-xs text-slate-500 mt-1">Mínimo 8 caracteres.</p>
+      </div>
+      <button type="submit" class="w-full rounded-xl bg-teal-600 hover:bg-teal-500 py-2.5 text-sm font-semibold text-white transition">
+        Criar usuário
+      </button>
+    </form>
+  </div>
+
+</div>
+
+<script>
+function togglePwForm(id){
+  const el = document.getElementById('pw-form-'+id);
+  el.classList.toggle('hidden');
+}
+</script>
+{% endblock %}
