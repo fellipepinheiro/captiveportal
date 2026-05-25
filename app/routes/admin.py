@@ -1,15 +1,50 @@
 import csv
 import io
+import os
+from pathlib import Path
+
 from flask import (
     Blueprint, render_template, request, redirect,
-    url_for, flash, Response
+    url_for, flash, Response, current_app
 )
 from flask_login import login_user, logout_user, login_required, current_user
+from werkzeug.utils import secure_filename
+
 from app.extensions import db, limiter
 from app.models import Visitor, PortalSession, AdminUser
+from app.models.site_config import SiteConfig
 
 bp = Blueprint("admin", __name__)
 
+UPLOAD_FOLDER = Path("app/static/uploads")
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "svg", "webp"}
+MAX_LOGO_BYTES = 2 * 1024 * 1024  # 2 MB
+
+_DEFAULT_CFG = {
+    "portal_title": "Wi-Fi Visitantes",
+    "portal_welcome": "Identifique-se para acessar a internet.",
+    "portal_btn_color": "#0f766e",
+    "portal_accent": "#14b8a6",
+    "portal_bg_from": "#0f172a",
+    "portal_bg_via": "#1e1b4b",
+    "portal_bg_to": "#0f172a",
+}
+
+
+def _allowed(filename: str) -> bool:
+    return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def _load_cfg() -> dict:
+    cfg = dict(_DEFAULT_CFG)
+    for key in _DEFAULT_CFG:
+        val = SiteConfig.get(key)
+        if val is not None:
+            cfg[key] = val
+    return cfg
+
+
+# ─── Auth ────────────────────────────────────────────────────────────────────
 
 @bp.get("/login")
 def login():
@@ -38,6 +73,8 @@ def logout():
     return redirect(url_for("admin.login"))
 
 
+# ─── Dashboard ───────────────────────────────────────────────────────────────
+
 @bp.get("/")
 @login_required
 def dashboard():
@@ -58,6 +95,8 @@ def dashboard():
         recent=recent,
     )
 
+
+# ─── Visitors ────────────────────────────────────────────────────────────────
 
 @bp.get("/visitantes")
 @login_required
@@ -88,3 +127,132 @@ def export_visitors():
         mimetype="text/csv",
         headers={"Content-Disposition": "attachment; filename=visitantes.csv"},
     )
+
+
+# ─── Appearance ──────────────────────────────────────────────────────────────
+
+@bp.get("/aparencia")
+@login_required
+def settings_appearance():
+    cfg = _load_cfg()
+    logo_path = UPLOAD_FOLDER / "logo.png"
+    has_logo = logo_path.exists()
+    return render_template(
+        "admin/settings_appearance.html",
+        cfg=cfg,
+        has_logo=has_logo,
+    )
+
+
+@bp.post("/aparencia/salvar")
+@login_required
+def settings_appearance_save():
+    keys = ["portal_title", "portal_welcome", "portal_btn_color",
+            "portal_accent", "portal_bg_from", "portal_bg_via", "portal_bg_to"]
+    for key in keys:
+        val = request.form.get(key, "").strip()
+        if val:
+            SiteConfig.set(key, val)
+    db.session.commit()
+    flash("Configuracoes salvas com sucesso.", "success")
+    return redirect(url_for("admin.settings_appearance"))
+
+
+@bp.post("/aparencia/logo")
+@login_required
+def upload_logo():
+    file = request.files.get("logo")
+    if not file or file.filename == "":
+        flash("Nenhum arquivo selecionado.", "error")
+        return redirect(url_for("admin.settings_appearance"))
+    if not _allowed(file.filename):
+        flash("Formato invalido. Use PNG, JPG, SVG ou WEBP.", "error")
+        return redirect(url_for("admin.settings_appearance"))
+    data = file.read()
+    if len(data) > MAX_LOGO_BYTES:
+        flash("Arquivo muito grande. Maximo 2 MB.", "error")
+        return redirect(url_for("admin.settings_appearance"))
+    UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
+    logo_path = UPLOAD_FOLDER / "logo.png"
+    logo_path.write_bytes(data)
+    flash("Logo atualizada com sucesso.", "success")
+    return redirect(url_for("admin.settings_appearance"))
+
+
+@bp.post("/aparencia/logo/remover")
+@login_required
+def remove_logo():
+    logo_path = UPLOAD_FOLDER / "logo.png"
+    if logo_path.exists():
+        logo_path.unlink()
+    flash("Logo removida.", "success")
+    return redirect(url_for("admin.settings_appearance"))
+
+
+# ─── Admin Users ─────────────────────────────────────────────────────────────
+
+@bp.get("/usuarios")
+@login_required
+def users():
+    all_users = AdminUser.query.order_by(AdminUser.created_at).all()
+    return render_template("admin/users.html", users=all_users, admin=current_user)
+
+
+@bp.post("/usuarios/criar")
+@login_required
+def user_create():
+    username = request.form.get("username", "").strip()
+    password = request.form.get("password", "")
+    if not username or len(password) < 8:
+        flash("Username obrigatorio e senha deve ter ao menos 8 caracteres.", "error")
+        return redirect(url_for("admin.users"))
+    if AdminUser.query.filter_by(username=username).first():
+        flash(f"Username '{username}' ja existe.", "error")
+        return redirect(url_for("admin.users"))
+    user = AdminUser(username=username)
+    user.set_password(password)
+    db.session.add(user)
+    db.session.commit()
+    flash(f"Usuario '{username}' criado com sucesso.", "success")
+    return redirect(url_for("admin.users"))
+
+
+@bp.post("/usuarios/<int:uid>/toggle")
+@login_required
+def user_toggle(uid: int):
+    user = AdminUser.query.get_or_404(uid)
+    if user.id == current_user.id:
+        flash("Voce nao pode desativar sua propria conta.", "error")
+        return redirect(url_for("admin.users"))
+    user.is_active = not user.is_active
+    db.session.commit()
+    status = "ativado" if user.is_active else "desativado"
+    flash(f"Usuario '{user.username}' {status}.", "success")
+    return redirect(url_for("admin.users"))
+
+
+@bp.post("/usuarios/<int:uid>/senha")
+@login_required
+def user_password(uid: int):
+    user = AdminUser.query.get_or_404(uid)
+    new_password = request.form.get("new_password", "")
+    if len(new_password) < 8:
+        flash("A senha deve ter ao menos 8 caracteres.", "error")
+        return redirect(url_for("admin.users"))
+    user.set_password(new_password)
+    db.session.commit()
+    flash(f"Senha de '{user.username}' alterada.", "success")
+    return redirect(url_for("admin.users"))
+
+
+@bp.post("/usuarios/<int:uid>/excluir")
+@login_required
+def user_delete(uid: int):
+    user = AdminUser.query.get_or_404(uid)
+    if user.id == current_user.id:
+        flash("Voce nao pode excluir sua propria conta.", "error")
+        return redirect(url_for("admin.users"))
+    db.session.delete(user)
+    db.session.commit()
+    flash(f"Usuario '{user.username}' excluido.", "success")
+    return redirect(url_for("admin.users"))
