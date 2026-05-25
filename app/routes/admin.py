@@ -41,6 +41,8 @@ def _load_cfg() -> dict:
         val = SiteConfig.get(key)
         if val is not None:
             cfg[key] = val
+    # Campos extras (nao estao em _DEFAULT_CFG mas precisam aparecer no template)
+    cfg['logo_title'] = SiteConfig.get('logo_title') or ''
     return cfg
 
 
@@ -155,6 +157,16 @@ def settings_appearance_save():
             SiteConfig.set(key, val)
     db.session.commit()
     flash("Configuracoes salvas com sucesso.", "success")
+    return redirect(url_for("admin.settings_appearance"))
+
+
+@bp.post("/aparencia/logo-title")
+@login_required
+def settings_logo_title_save():
+    logo_title = request.form.get("logo_title", "").strip()
+    SiteConfig.set("logo_title", logo_title)
+    db.session.commit()
+    flash("Título da logo salvo com sucesso.", "success")
     return redirect(url_for("admin.settings_appearance"))
 
 

@@ -39,6 +39,7 @@ def create_app(config_name=None):
                 portal_btn_color=SiteConfig.get('portal_btn_color') or '#0d9488',
                 portal_btn_hover=SiteConfig.get('portal_btn_hover') or '#0f766e',
                 custom_logo_url=SiteConfig.get('custom_logo_url') or '',
+                logo_title=SiteConfig.get('logo_title') or '',
                 ssid='',
                 redirect_url='',
             )
@@ -53,6 +54,7 @@ def create_app(config_name=None):
                 portal_btn_color='#0d9488',
                 portal_btn_hover='#0f766e',
                 custom_logo_url='',
+                logo_title='',
                 ssid='',
                 redirect_url='',
             )
