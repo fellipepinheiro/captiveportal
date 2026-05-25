@@ -18,6 +18,11 @@ def create_app(config_class=Config):
     app.register_blueprint(portal_bp)
     app.register_blueprint(admin_bp)
 
+    # Registra comandos CLI
+    from .cli import create_admin_cmd, list_admins_cmd
+    app.cli.add_command(create_admin_cmd)
+    app.cli.add_command(list_admins_cmd)
+
     @app.get('/health')
     def health():
         return {'status': 'ok'}

@@ -12,6 +12,23 @@ def normalize_digits(value):
     return ''.join(ch for ch in (value or '') if ch.isdigit())
 
 
+def _get_unifi_config():
+    """Retorna configuracoes UniFi priorizando SiteConfig (banco) sobre .env."""
+    try:
+        from app.models.site_config import SiteConfig
+        url = SiteConfig.get('unifi_base_url') or current_app.config.get('UNIFI_BASE_URL', '')
+        key = SiteConfig.get('unifi_api_key') or current_app.config.get('UNIFI_API_KEY', '')
+        site_id = SiteConfig.get('unifi_site_id') or current_app.config.get('UNIFI_SITE_ID', 'default')
+        minutes_raw = SiteConfig.get('guest_auth_minutes')
+        minutes = int(minutes_raw) if minutes_raw and minutes_raw.isdigit() else current_app.config.get('GUEST_AUTH_MINUTES', 480)
+    except Exception:
+        url = current_app.config.get('UNIFI_BASE_URL', '')
+        key = current_app.config.get('UNIFI_API_KEY', '')
+        site_id = current_app.config.get('UNIFI_SITE_ID', 'default')
+        minutes = current_app.config.get('GUEST_AUTH_MINUTES', 480)
+    return url, key, site_id, minutes
+
+
 def create_or_update_pending_session(ap_mac, client_mac, ssid, redirect_url, token):
     portal_session = (
         PortalSession.query
@@ -62,16 +79,11 @@ def upsert_visitor(email, mobile, full_name=None, cpf=None):
 
 def authorize_session(portal_session, visitor):
     """Autoriza o acesso do visitante via API UniFi.
-    Retorna True em caso de sucesso.
-    Lanca UnifiAuthError em caso de falha.
+    Configuracoes lidas do banco (SiteConfig) com fallback para .env.
     """
-    api = UnifiAPI(
-        current_app.config.get('UNIFI_BASE_URL', ''),
-        current_app.config.get('UNIFI_API_KEY', ''),
-    )
+    url, key, site_id, minutes = _get_unifi_config()
 
-    site_id = current_app.config.get('UNIFI_SITE_ID', 'default')
-    minutes = current_app.config.get('GUEST_AUTH_MINUTES', 480)
+    api = UnifiAPI(url, key)
 
     try:
         client = api.find_client_by_mac(site_id, portal_session.client_mac)
