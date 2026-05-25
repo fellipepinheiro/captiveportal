@@ -20,12 +20,10 @@
     </div>
     <nav class="flex-1 px-3 py-4 space-y-0.5">
       {% set nav = [
-        ('admin.dashboard',  'layout-dashboard', 'Dashboard'),
-        ('admin.visitors',   'users',             'Visitantes'),
-        ('admin.logs',       'scroll-text',       'Logs'),
-        ('admin.settings_appearance', 'palette',  'Aparência'),
-        ('admin.settings_unifi',      'wifi',     'UniFi'),
-        ('admin.users',      'shield-check',      'Usuários'),
+        ('admin.dashboard',           'layout-dashboard', 'Dashboard'),
+        ('admin.visitors',            'users',            'Visitantes'),
+        ('admin.settings_appearance', 'palette',          'Aparência'),
+        ('admin.users',               'shield-check',     'Usuários'),
       ] %}
       {% for endpoint, icon, label in nav %}
         <a href="{{ url_for(endpoint) }}"
