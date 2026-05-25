@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="pt-BR" class="h-full bg-slate-950">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Admin — Portal Wi-Fi</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: { extend: { colors: { brand: { 500: '#0f766e', 600: '#0d5f59' } } } }
+    }
+  </script>
+</head>
+<body class="min-h-full bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 text-slate-50">
+  <main class="mx-auto flex min-h-screen max-w-lg items-center px-6 py-10">
+    <section class="w-full rounded-3xl border border-white/10 bg-white/10 p-8 shadow-2xl backdrop-blur">
+
+      <div class="mb-8">
+        <p class="text-sm uppercase tracking-[0.25em] text-teal-300">Administração</p>
+        <h1 class="mt-3 text-3xl font-semibold">Portal Wi-Fi</h1>
+        <p class="mt-2 text-sm text-slate-300">Personalize a logo exibida no captive portal.</p>
+      </div>
+
+      <!-- Flash messages -->
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          <div class="mb-6 space-y-2">
+            {% for category, message in messages %}
+              <div class="rounded-xl px-4 py-3 text-sm
+                {% if category == 'success' %}
+                  border border-teal-400/30 bg-teal-500/10 text-teal-100
+                {% else %}
+                  border border-rose-400/30 bg-rose-500/10 text-rose-100
+                {% endif %}">
+                {{ message }}
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+      {% endwith %}
+
+      <!-- Logo atual -->
+      <div class="mb-6 rounded-2xl border border-white/10 bg-white/5 p-6">
+        <p class="mb-3 text-xs uppercase tracking-widest text-slate-400">Logo atual</p>
+        {% if has_logo %}
+          <div class="flex items-center gap-4">
+            <img src="/static/uploads/logo.png?{{ range(1,99999)|random }}"
+                 alt="Logo atual" class="h-16 max-w-[200px] rounded-xl object-contain"
+                 loading="lazy">
+            <form method="post" action="/admin/logo/remove">
+              <button type="submit"
+                class="rounded-xl border border-rose-400/30 bg-rose-500/10 px-4 py-2 text-sm
+                       text-rose-200 transition hover:bg-rose-500/20">
+                Remover logo
+              </button>
+            </form>
+          </div>
+        {% else %}
+          <p class="text-sm text-slate-400">Nenhuma logo cadastrada. O portal exibe o título padrão.</p>
+        {% endif %}
+      </div>
+
+      <!-- Upload -->
+      <form method="post" action="/admin/logo/upload" enctype="multipart/form-data"
+            id="upload-form">
+        <div
+          id="drop-area"
+          class="relative flex cursor-pointer flex-col items-center justify-center
+                 rounded-2xl border-2 border-dashed border-white/20 bg-white/5 p-10
+                 text-center transition hover:border-teal-400/50 hover:bg-white/10"
+          onclick="document.getElementById('logo-input').click()">
+
+          <svg class="mb-3 h-10 w-10 text-slate-400" fill="none" stroke="currentColor"
+               stroke-width="1.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round"
+                  d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021
+                     18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+          </svg>
+
+          <p class="text-sm font-medium text-slate-200">Clique para selecionar ou arraste aqui</p>
+          <p class="mt-1 text-xs text-slate-400">PNG, JPG, SVG ou WEBP — máx. 2 MB</p>
+
+          <p id="file-name" class="mt-3 text-xs text-teal-300"></p>
+
+          <input id="logo-input" name="logo" type="file"
+                 accept=".png,.jpg,.jpeg,.svg,.webp"
+                 class="absolute inset-0 cursor-pointer opacity-0"
+                 onchange="showFileName(this)">
+        </div>
+
+        <!-- Preview -->
+        <div id="preview-wrap" class="mt-4 hidden items-center justify-center">
+          <img id="preview-img" src="" alt="Preview"
+               class="h-20 max-w-xs rounded-xl object-contain border border-white/10">
+        </div>
+
+        <button type="submit"
+          class="mt-6 w-full rounded-2xl bg-teal-600 py-3 text-sm font-semibold
+                 tracking-wide text-white transition hover:bg-teal-500 active:scale-95">
+          Salvar logo
+        </button>
+      </form>
+
+      <div class="mt-6 border-t border-white/10 pt-4">
+        <a href="/guest/s/default/?id=aa:bb:cc:00:00:01&ap=00:00:00:00:00:01&ssid=Teste"
+           class="text-xs text-slate-400 hover:text-teal-300 transition">
+          ← Ver portal do visitante
+        </a>
+      </div>
+
+    </section>
+  </main>
+
+  <script>
+    function showFileName(input) {
+      const name = input.files[0]?.name || '';
+      document.getElementById('file-name').textContent = name ? `Arquivo: ${name}` : '';
+
+      // Preview da imagem
+      const wrap = document.getElementById('preview-wrap');
+      const img  = document.getElementById('preview-img');
+      if (input.files[0]) {
+        const reader = new FileReader();
+        reader.onload = e => {
+          img.src = e.target.result;
+          wrap.classList.remove('hidden');
+          wrap.classList.add('flex');
+        };
+        reader.readAsDataURL(input.files[0]);
+      } else {
+        wrap.classList.add('hidden');
+        wrap.classList.remove('flex');
+      }
+    }
+
+    // Drag & drop
+    const area = document.getElementById('drop-area');
+    const inp  = document.getElementById('logo-input');
+
+    ['dragenter','dragover'].forEach(evt =>
+      area.addEventListener(evt, e => { e.preventDefault(); area.classList.add('border-teal-400/70'); })
+    );
+    ['dragleave','drop'].forEach(evt =>
+      area.addEventListener(evt, e => { e.preventDefault(); area.classList.remove('border-teal-400/70'); })
+    );
+    area.addEventListener('drop', e => {
+      const files = e.dataTransfer.files;
+      if (files.length) {
+        inp.files = files;
+        showFileName(inp);
+      }
+    });
+  </script>
+</body>
+</html>
