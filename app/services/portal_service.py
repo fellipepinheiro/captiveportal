@@ -1,8 +1,11 @@
+import logging
 from datetime import datetime, timedelta
 from flask import current_app, request
 from app.extensions import db
 from app.models import PortalSession, Visitor, AuditLog
 from app.services.unifi_api import UnifiAPI
+
+logger = logging.getLogger(__name__)
 
 
 def normalize_digits(value):
@@ -58,34 +61,45 @@ def upsert_visitor(email, mobile, full_name=None, cpf=None):
 
 
 def authorize_session(portal_session, visitor):
+    """Autoriza o acesso do visitante via API UniFi.
+    Retorna True em caso de sucesso.
+    Lanca UnifiAuthError em caso de falha.
+    """
     api = UnifiAPI(
-        current_app.config['UNIFI_BASE_URL'],
-        current_app.config['UNIFI_API_KEY'],
+        current_app.config.get('UNIFI_BASE_URL', ''),
+        current_app.config.get('UNIFI_API_KEY', ''),
     )
 
-    site_id = current_app.config['UNIFI_SITE_ID']
-    client = api.find_client_by_mac(site_id, portal_session.client_mac)
+    site_id = current_app.config.get('UNIFI_SITE_ID', 'default')
+    minutes = current_app.config.get('GUEST_AUTH_MINUTES', 480)
+
+    try:
+        client = api.find_client_by_mac(site_id, portal_session.client_mac)
+    except Exception as exc:
+        logger.error('Erro ao buscar cliente no UniFi: %s', exc)
+        _log_error(portal_session, str(exc))
+        raise UnifiAuthError(f'Nao foi possivel contactar o controlador UniFi: {exc}') from exc
 
     if not client:
-        db.session.add(AuditLog(
-            event_type='authorize_guest',
-            status='error',
-            payload=portal_session.client_mac,
-            error_message='Cliente nao encontrado no UniFi',
-        ))
-        db.session.commit()
-        raise ValueError('Cliente nao encontrado no UniFi')
+        msg = f'Cliente MAC {portal_session.client_mac} nao encontrado no UniFi'
+        logger.warning(msg)
+        _log_error(portal_session, msg)
+        raise UnifiAuthError(msg)
 
     client_id = client.get('id') or client.get('clientId')
-    api.authorize_guest(site_id, client_id, current_app.config['GUEST_AUTH_MINUTES'])
+
+    try:
+        api.authorize_guest(site_id, client_id, minutes)
+    except Exception as exc:
+        logger.error('Erro ao autorizar guest no UniFi: %s', exc)
+        _log_error(portal_session, str(exc))
+        raise UnifiAuthError(f'Falha ao autorizar acesso: {exc}') from exc
 
     portal_session.visitor_id = visitor.id
     portal_session.client_id = client_id
     portal_session.authorized = True
     portal_session.authorized_at = datetime.utcnow()
-    portal_session.expires_at = datetime.utcnow() + timedelta(
-        minutes=current_app.config['GUEST_AUTH_MINUTES']
-    )
+    portal_session.expires_at = datetime.utcnow() + timedelta(minutes=minutes)
 
     db.session.add(AuditLog(
         event_type='authorize_guest',
@@ -94,4 +108,21 @@ def authorize_session(portal_session, visitor):
     ))
     db.session.add(portal_session)
     db.session.commit()
-    return portal_session
+    return True
+
+
+def _log_error(portal_session, message):
+    try:
+        db.session.add(AuditLog(
+            event_type='authorize_guest',
+            status='error',
+            payload=getattr(portal_session, 'client_mac', ''),
+            error_message=message,
+        ))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+
+
+class UnifiAuthError(Exception):
+    pass
