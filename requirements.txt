@@ -1,30 +1,22 @@
-# Web
-Flask==3.1.0
-Flask-SQLAlchemy==3.1.1
-Flask-Migrate==4.0.7
-Flask-WTF==1.2.1
-Flask-Login==0.6.3
-Flask-Limiter==3.8.0
-Werkzeug==3.1.3
+# Web framework
+flask>=3.1,<4
+werkzeug>=3.1,<4
 
-# HTTP / UniFi API
-requests==2.32.3
+# Banco de dados
+sqlalchemy>=2.0,<3
+flask-sqlalchemy>=3.1,<4
+pymysql>=1.1
+cryptography>=42
 
-# Database
-PyMySQL==1.1.1
-cryptography==43.0.3
+# Migrations
+alembic>=1.13,<2
 
-# Config / utilities
-python-decouple==3.8
-tenacity==8.5.0
-structlog==24.4.0
-bcrypt==4.2.0
-phonenumbers==8.13.47
+# HTTP client (integração UniFi)
+requests>=2.32
+urllib3>=2.2
 
-# WSGI
-gunicorn==23.0.0
+# Servidor WSGI (produção)
+gunicorn>=22,<24
 
-# Dev / tests
-pytest==8.3.3
-pytest-flask==1.3.0
-coverage==7.6.4
+# Configuração / ambiente
+python-dotenv>=1.0

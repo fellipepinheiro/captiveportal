@@ -1,36 +1,74 @@
-{% extends 'base.html' %}
-{% block title %}Acesso Liberado!{% endblock %}
+{% extends 'portal/base.html' %}
 
-{% block content %}
-<div class="w-full max-w-md fade-in">
-  <div class="text-center mb-8">
-    <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-green-500 mb-4">
-      <svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2.5" class="w-8 h-8">
-        <path d="M20 6L9 17l-5-5"/>
-      </svg>
-    </div>
-    <h1 class="text-2xl font-bold text-gray-900">Acesso liberado!</h1>
-    <p class="text-sm text-gray-500 mt-1">Bem-vindo(a), <strong>{{ name }}</strong>!</p>
+{% block steps %}
+<div class="mb-6 flex items-center justify-center">
+  <div class="step-dot done">
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
   </div>
-
-  <div class="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 text-center">
-    <p class="text-sm text-gray-600 mb-6">
-      Voc&ecirc; est&aacute; conectado &agrave; internet. Aproveite!
-    </p>
-    <a
-      href="{{ redirect_url or 'http://google.com' }}"
-      class="inline-block bg-primary hover:bg-primary-hover text-white font-semibold px-8 py-3 rounded-xl transition-colors text-sm"
-    >
-      Ir para a internet &rarr;
-    </a>
+  <div class="step-line done"></div>
+  <div class="step-dot done">
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+  </div>
+  <div class="step-line done"></div>
+  <div class="step-dot done">
+    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
   </div>
 </div>
 {% endblock %}
 
-{% block extra_scripts %}
+{% block content %}
+<div class="flex flex-col items-center text-center space-y-5" id="success-content">
+
+  <!-- Ícone animado -->
+  <div class="relative flex h-20 w-20 items-center justify-center">
+    <div class="absolute inset-0 animate-ping rounded-full opacity-20" style="background: {{ portal_btn_color | default('#0d9488') }}"></div>
+    <div class="relative flex h-20 w-20 items-center justify-center rounded-full" style="background: {{ portal_btn_color | default('#0d9488') }}25; border: 1px solid {{ portal_btn_color | default('#0d9488') }}50">
+      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="{{ portal_accent | default('#2dd4bf') }}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="20 6 9 17 4 12"/>
+      </svg>
+    </div>
+  </div>
+
+  <div>
+    <h2 class="text-2xl font-bold text-slate-50">Acesso liberado!</h2>
+    <p class="mt-2 text-sm text-slate-400">Você está conectado à internet.</p>
+  </div>
+
+  <!-- Barra de progresso do redirect -->
+  <div class="w-full">
+    <div class="mb-2 flex items-center justify-between text-xs text-slate-500">
+      <span>Redirecionando em breve</span>
+      <span id="countdown">5</span>s
+    </div>
+    <div class="h-1.5 w-full overflow-hidden rounded-full" style="background: rgba(255,255,255,0.08)">
+      <div id="progress-bar" class="h-full rounded-full transition-all" style="background: {{ portal_btn_color | default('#0d9488') }}; width: 0%"></div>
+    </div>
+  </div>
+
+  <p class="text-xs text-slate-600">
+    Se não redirecionar automaticamente,
+    <a href="{{ redirect_url or 'http://detectportal.firefox.com/success.txt' }}" class="text-slate-400 underline underline-offset-2">clique aqui</a>.
+  </p>
+
+</div>
+
 <script>
-  // Auto-redirect after 5 seconds
-  const dest = "{{ redirect_url or 'http://google.com' }}";
-  setTimeout(() => { window.location.href = dest; }, 5000);
+  const totalSeconds = 5;
+  let elapsed = 0;
+  const bar = document.getElementById('progress-bar');
+  const countEl = document.getElementById('countdown');
+  const redirectUrl = "{{ redirect_url | default('http://captive.apple.com') }}";
+
+  const interval = setInterval(function() {
+    elapsed++;
+    const pct = (elapsed / totalSeconds) * 100;
+    bar.style.width = pct + '%';
+    countEl.textContent = totalSeconds - elapsed;
+
+    if (elapsed >= totalSeconds) {
+      clearInterval(interval);
+      window.location.href = redirectUrl || 'http://captive.apple.com';
+    }
+  }, 1000);
 </script>
 {% endblock %}
