@@ -1,0 +1,58 @@
+{% extends 'admin/base.html' %}
+{% block title %}Visitante{% endblock %}
+{% block content %}
+<div class="mb-6 flex items-center gap-3">
+  <a href="{{ url_for('admin.visitors') }}" class="text-sm text-slate-400 hover:text-teal-300 transition">← Visitantes</a>
+</div>
+
+<div class="grid md:grid-cols-2 gap-6">
+  <div class="rounded-2xl border border-white/10 bg-white/5 p-6 space-y-4">
+    <h2 class="text-lg font-semibold">{{ visitor.full_name }}</h2>
+    {% for label, value in [
+      ('CPF', visitor.cpf),
+      ('E-mail', visitor.email),
+      ('Celular', visitor.mobile),
+      ('Cadastro', visitor.created_at.strftime('%d/%m/%Y %H:%M') if visitor.created_at else '—'),
+      ('Consentimento', visitor.consent_at.strftime('%d/%m/%Y %H:%M') if visitor.consent_at else '—'),
+    ] %}
+    <div>
+      <p class="text-xs uppercase tracking-wider text-slate-500">{{ label }}</p>
+      <p class="text-sm mt-0.5">{{ value or '—' }}</p>
+    </div>
+    {% endfor %}
+    <div class="pt-2">
+      <form method="post" action="{{ url_for('admin.visitor_toggle', visitor_id=visitor.id) }}">
+        <button class="rounded-xl border px-4 py-2 text-sm transition
+          {% if visitor.is_active %}border-rose-400/30 text-rose-300 hover:bg-rose-500/10
+          {% else %}border-teal-400/30 text-teal-300 hover:bg-teal-500/10{% endif %}">
+          {{ 'Bloquear visitante' if visitor.is_active else 'Reativar visitante' }}
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <div class="rounded-2xl border border-white/10 bg-white/5 p-6">
+    <h3 class="text-sm font-semibold mb-4 text-slate-300">Histórico de Sessões</h3>
+    {% if sessions %}
+    <div class="space-y-2">
+      {% for s in sessions %}
+      <div class="rounded-xl bg-white/5 px-4 py-3 text-xs space-y-1">
+        <div class="flex justify-between">
+          <span class="font-mono text-slate-400">{{ s.client_mac or '—' }}</span>
+          <span class="{% if s.authorized %}text-teal-400{% else %}text-slate-500{% endif %}">
+            {{ 'Autorizado' if s.authorized else 'Pendente' }}
+          </span>
+        </div>
+        <div class="text-slate-500">SSID: {{ s.ssid or '—' }} · IP: {{ s.ip_address or '—' }}</div>
+        <div class="text-slate-600">
+          {{ s.authorized_at.strftime('%d/%m/%Y %H:%M') if s.authorized_at else s.created_at.strftime('%d/%m/%Y %H:%M') if s.created_at else '' }}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="text-sm text-slate-500">Sem sessões registradas.</p>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

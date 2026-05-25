@@ -1,0 +1,77 @@
+{% extends 'admin/base.html' %}
+{% block title %}Logs{% endblock %}
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h2 class="text-xl font-semibold">Logs de Eventos</h2>
+  <span class="text-sm text-slate-400">{{ pagination.total }} eventos</span>
+</div>
+
+<form method="get" class="mb-5 flex flex-wrap gap-2">
+  <select name="status"
+          class="rounded-xl bg-white/10 border border-white/20 px-4 py-2.5 text-sm focus:outline-none">
+    <option value="" {% if not status_filter %}selected{% endif %}>Todos os status</option>
+    <option value="success" {% if status_filter=='success' %}selected{% endif %}>Sucesso</option>
+    <option value="error"   {% if status_filter=='error'   %}selected{% endif %}>Erro</option>
+  </select>
+  <input name="date" type="date" value="{{ date_filter }}"
+         class="rounded-xl bg-white/10 border border-white/20 px-4 py-2.5 text-sm focus:outline-none">
+  <button class="rounded-xl bg-teal-600 px-5 py-2.5 text-sm font-semibold hover:bg-teal-500 transition">Filtrar</button>
+  <a href="{{ url_for('admin.logs') }}" class="rounded-xl border border-white/20 px-5 py-2.5 text-sm hover:bg-white/5 transition">Limpar</a>
+</form>
+
+{% if pagination.items %}
+<div class="rounded-2xl border border-white/10 bg-white/5 overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="border-b border-white/10 text-xs uppercase tracking-wider text-slate-400">
+      <tr>
+        <th class="px-5 py-3 text-left">Evento</th>
+        <th class="px-5 py-3 text-center">Status</th>
+        <th class="px-5 py-3 text-left hidden md:table-cell">MAC / Payload</th>
+        <th class="px-5 py-3 text-left hidden lg:table-cell">Mensagem de erro</th>
+        <th class="px-5 py-3 text-right">Data</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-white/5">
+      {% for log in pagination.items %}
+      <tr class="hover:bg-white/5 transition">
+        <td class="px-5 py-3 font-mono text-xs">{{ log.event_type }}</td>
+        <td class="px-5 py-3 text-center">
+          <span class="rounded-full px-2 py-0.5 text-xs font-medium
+            {% if log.status == 'success' %}bg-teal-500/15 text-teal-300
+            {% else %}bg-rose-500/15 text-rose-300{% endif %}">
+            {{ log.status }}
+          </span>
+        </td>
+        <td class="px-5 py-3 font-mono text-xs text-slate-400 hidden md:table-cell">{{ log.payload or '—' }}</td>
+        <td class="px-5 py-3 text-xs text-slate-500 hidden lg:table-cell">{{ log.error_message or '—' }}</td>
+        <td class="px-5 py-3 text-right text-xs text-slate-500">
+          {{ log.created_at.strftime('%d/%m/%Y %H:%M') if log.created_at else '—' }}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if pagination.pages > 1 %}
+<div class="mt-5 flex gap-2 justify-center text-sm">
+  {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+    {% if p %}
+      <a href="?status={{ status_filter }}&date={{ date_filter }}&page={{ p }}"
+         class="rounded-xl px-3 py-1.5 transition
+                {% if p == pagination.page %}bg-teal-600 text-white{% else %}bg-white/5 text-slate-400 hover:bg-white/10{% endif %}">
+        {{ p }}
+      </a>
+    {% else %}
+      <span class="px-2 py-1.5 text-slate-600">…</span>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
+{% else %}
+<div class="rounded-2xl border border-white/10 bg-white/5 p-12 text-center text-slate-400">
+  <p class="text-sm">Nenhum evento encontrado.</p>
+</div>
+{% endif %}
+{% endblock %}

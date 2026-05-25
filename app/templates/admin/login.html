@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="pt-BR" class="h-full">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Login — Admin Portal Wi-Fi</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 text-slate-50
+             flex items-center justify-center px-4">
+  <div class="w-full max-w-sm">
+    <div class="mb-8 text-center">
+      <p class="text-xs uppercase tracking-widest text-teal-400">Administração</p>
+      <h1 class="mt-2 text-2xl font-semibold">Portal Wi-Fi</h1>
+    </div>
+    <div class="rounded-3xl border border-white/10 bg-white/10 p-8 shadow-2xl backdrop-blur">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for _, message in messages %}
+            <div class="mb-4 rounded-xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">
+              {{ message }}
+            </div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+      <form method="post" action="{{ url_for('admin.login_post') }}" class="space-y-5">
+        <div>
+          <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1">Usuário</label>
+          <input name="username" type="text" autocomplete="username" required
+                 class="w-full rounded-xl bg-white/10 border border-white/20 px-4 py-3 text-sm
+                        placeholder-slate-500 focus:outline-none focus:border-teal-400"
+                 placeholder="admin">
+        </div>
+        <div>
+          <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1">Senha</label>
+          <input name="password" type="password" autocomplete="current-password" required
+                 class="w-full rounded-xl bg-white/10 border border-white/20 px-4 py-3 text-sm
+                        placeholder-slate-500 focus:outline-none focus:border-teal-400"
+                 placeholder="••••••••">
+        </div>
+        <button type="submit"
+          class="w-full rounded-xl bg-teal-600 py-3 text-sm font-semibold tracking-wide
+                 hover:bg-teal-500 transition active:scale-95">
+          Entrar
+        </button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

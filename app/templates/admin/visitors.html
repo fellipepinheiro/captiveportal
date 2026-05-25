@@ -1,0 +1,81 @@
+{% extends 'admin/base.html' %}
+{% block title %}Visitantes{% endblock %}
+{% block content %}
+<div class="flex items-center justify-between mb-6">
+  <h2 class="text-xl font-semibold">Visitantes</h2>
+  <span class="text-sm text-slate-400">{{ pagination.total }} registros</span>
+</div>
+
+<form method="get" class="mb-5">
+  <div class="flex gap-2">
+    <input name="q" type="search" value="{{ q }}" placeholder="Buscar por nome, e-mail, CPF ou celular…"
+           class="flex-1 rounded-xl bg-white/10 border border-white/20 px-4 py-2.5 text-sm
+                  focus:outline-none focus:border-teal-400">
+    <button class="rounded-xl bg-teal-600 px-5 py-2.5 text-sm font-semibold hover:bg-teal-500 transition">Buscar</button>
+  </div>
+</form>
+
+{% if pagination.items %}
+<div class="rounded-2xl border border-white/10 bg-white/5 overflow-hidden">
+  <table class="w-full text-sm">
+    <thead class="border-b border-white/10 text-xs uppercase tracking-wider text-slate-400">
+      <tr>
+        <th class="px-5 py-3 text-left">Nome</th>
+        <th class="px-5 py-3 text-left hidden md:table-cell">E-mail</th>
+        <th class="px-5 py-3 text-left hidden lg:table-cell">Celular</th>
+        <th class="px-5 py-3 text-center">Status</th>
+        <th class="px-5 py-3 text-center">Sessões</th>
+        <th class="px-5 py-3"></th>
+      </tr>
+    </thead>
+    <tbody class="divide-y divide-white/5">
+      {% for v in pagination.items %}
+      <tr class="hover:bg-white/5 transition">
+        <td class="px-5 py-3 font-medium">{{ v.full_name }}</td>
+        <td class="px-5 py-3 text-slate-400 hidden md:table-cell">{{ v.email }}</td>
+        <td class="px-5 py-3 text-slate-400 hidden lg:table-cell">{{ v.mobile }}</td>
+        <td class="px-5 py-3 text-center">
+          <span class="rounded-full px-2 py-0.5 text-xs font-medium
+            {% if v.is_active %}bg-teal-500/15 text-teal-300{% else %}bg-rose-500/15 text-rose-300{% endif %}">
+            {{ 'Ativo' if v.is_active else 'Bloqueado' }}
+          </span>
+        </td>
+        <td class="px-5 py-3 text-center text-slate-400">{{ v.sessions|length }}</td>
+        <td class="px-5 py-3 text-right">
+          <a href="{{ url_for('admin.visitor_detail', visitor_id=v.id) }}"
+             class="text-xs text-teal-400 hover:text-teal-300 mr-3">Ver</a>
+          <form method="post" action="{{ url_for('admin.visitor_toggle', visitor_id=v.id) }}" class="inline">
+            <button class="text-xs text-slate-400 hover:text-rose-300 transition">
+              {{ 'Bloquear' if v.is_active else 'Ativar' }}
+            </button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Paginação -->
+{% if pagination.pages > 1 %}
+<div class="mt-5 flex gap-2 justify-center text-sm">
+  {% for p in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+    {% if p %}
+      <a href="?q={{ q }}&page={{ p }}"
+         class="rounded-xl px-3 py-1.5 transition
+                {% if p == pagination.page %}bg-teal-600 text-white{% else %}bg-white/5 text-slate-400 hover:bg-white/10{% endif %}">
+        {{ p }}
+      </a>
+    {% else %}
+      <span class="px-2 py-1.5 text-slate-600">…</span>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
+{% else %}
+<div class="rounded-2xl border border-white/10 bg-white/5 p-12 text-center text-slate-400">
+  <p class="text-sm">Nenhum visitante encontrado.</p>
+</div>
+{% endif %}
+{% endblock %}

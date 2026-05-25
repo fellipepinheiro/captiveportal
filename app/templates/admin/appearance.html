@@ -1,0 +1,75 @@
+{% extends 'admin/base.html' %}
+{% block title %}Aparência{% endblock %}
+{% block content %}
+<h2 class="text-xl font-semibold mb-6">Aparência do Portal</h2>
+
+<div class="grid md:grid-cols-2 gap-6">
+  <!-- Logo -->
+  <div class="rounded-2xl border border-white/10 bg-white/5 p-6">
+    <h3 class="text-sm font-semibold mb-4 text-slate-300">Logo</h3>
+    {% if has_logo %}
+      <div class="mb-4">
+        <img src="/static/uploads/logo.png" alt="Logo atual"
+             class="h-16 max-w-[220px] rounded-xl object-contain border border-white/10">
+      </div>
+      <form method="post" action="{{ url_for('admin.remove_logo') }}">
+        <button class="text-sm text-rose-400 hover:text-rose-300 transition">Remover logo</button>
+      </form>
+    {% else %}
+      <p class="text-sm text-slate-500 mb-4">Nenhuma logo. O portal exibe o título padrão.</p>
+    {% endif %}
+    <form method="post" action="{{ url_for('admin.upload_logo') }}" enctype="multipart/form-data" class="mt-4">
+      <div id="drop-area"
+           class="relative flex cursor-pointer flex-col items-center rounded-2xl border-2 border-dashed
+                  border-white/20 bg-white/5 p-8 text-center transition hover:border-teal-400/50"
+           onclick="document.getElementById('logo-input').click()">
+        <svg class="h-8 w-8 text-slate-400 mb-2" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5"/>
+        </svg>
+        <p class="text-sm text-slate-300">Clique ou arraste a logo aqui</p>
+        <p class="text-xs text-slate-500 mt-1">PNG, JPG, SVG, WEBP — máx. 2 MB</p>
+        <p id="fname" class="mt-2 text-xs text-teal-300"></p>
+        <input id="logo-input" name="logo" type="file" accept=".png,.jpg,.jpeg,.svg,.webp"
+               class="absolute inset-0 opacity-0 cursor-pointer" onchange="showName(this)">
+      </div>
+      <button type="submit" class="mt-3 w-full rounded-xl bg-teal-600 py-2.5 text-sm font-semibold hover:bg-teal-500 transition">Salvar logo</button>
+    </form>
+  </div>
+
+  <!-- Textos e cor -->
+  <div class="rounded-2xl border border-white/10 bg-white/5 p-6">
+    <h3 class="text-sm font-semibold mb-4 text-slate-300">Textos e Cores</h3>
+    <form method="post" action="{{ url_for('admin.appearance_save') }}" class="space-y-4">
+      <div>
+        <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1">Título do portal</label>
+        <input name="portal_title" type="text" value="{{ title }}"
+               class="w-full rounded-xl bg-white/10 border border-white/20 px-4 py-2.5 text-sm
+                      focus:outline-none focus:border-teal-400">
+      </div>
+      <div>
+        <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1">Mensagem de boas-vindas</label>
+        <textarea name="portal_welcome" rows="3"
+               class="w-full rounded-xl bg-white/10 border border-white/20 px-4 py-2.5 text-sm
+                      focus:outline-none focus:border-teal-400 resize-none">{{ welcome }}</textarea>
+      </div>
+      <div>
+        <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1">Cor do botão</label>
+        <div class="flex items-center gap-3">
+          <input name="portal_btn_color" type="color" value="{{ btn_color }}"
+                 class="h-10 w-16 rounded-lg cursor-pointer bg-transparent border border-white/20">
+          <input type="text" id="hex-text" value="{{ btn_color }}"
+                 class="w-32 rounded-xl bg-white/10 border border-white/20 px-3 py-2 text-sm font-mono
+                        focus:outline-none focus:border-teal-400">
+        </div>
+      </div>
+      <button type="submit" class="w-full rounded-xl bg-teal-600 py-2.5 text-sm font-semibold hover:bg-teal-500 transition">Salvar textos</button>
+    </form>
+  </div>
+</div>
+
+<script>
+function showName(i){document.getElementById('fname').textContent=i.files[0]?.name||'';}
+const ci=document.querySelector('[name=portal_btn_color]'),ht=document.getElementById('hex-text');
+if(ci&&ht){ci.addEventListener('input',()=>ht.value=ci.value);ht.addEventListener('input',()=>ci.value=ht.value);}
+</script>
+{% endblock %}

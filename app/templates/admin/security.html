@@ -1,0 +1,45 @@
+{% extends 'admin/base.html' %}
+{% block title %}Segurança{% endblock %}
+{% block content %}
+<h2 class="text-xl font-semibold mb-6">Segurança</h2>
+
+<div class="max-w-md">
+  <div class="rounded-2xl border border-white/10 bg-white/5 p-6">
+    <h3 class="text-sm font-semibold mb-1 text-slate-300">Alterar senha</h3>
+    <p class="text-xs text-slate-500 mb-5">Usuário logado: <span class="text-teal-400">{{ user.username }}</span></p>
+    <form method="post" action="{{ url_for('admin.security_password') }}" class="space-y-4">
+      <div>
+        <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1">Senha atual</label>
+        <input name="current_password" type="password" required
+               class="w-full rounded-xl bg-white/10 border border-white/20 px-4 py-2.5 text-sm
+                      focus:outline-none focus:border-teal-400" placeholder="••••••••">
+      </div>
+      <div>
+        <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1">Nova senha</label>
+        <input name="new_password" type="password" required minlength="8"
+               class="w-full rounded-xl bg-white/10 border border-white/20 px-4 py-2.5 text-sm
+                      focus:outline-none focus:border-teal-400" placeholder="Mínimo 8 caracteres">
+      </div>
+      <div>
+        <label class="block text-xs uppercase tracking-wider text-slate-400 mb-1">Confirmar nova senha</label>
+        <input name="confirm_password" type="password" required minlength="8"
+               class="w-full rounded-xl bg-white/10 border border-white/20 px-4 py-2.5 text-sm
+                      focus:outline-none focus:border-teal-400" placeholder="Repita a senha">
+      </div>
+      <button type="submit"
+              class="w-full rounded-xl bg-teal-600 py-2.5 text-sm font-semibold hover:bg-teal-500 transition">
+        Alterar senha
+      </button>
+    </form>
+  </div>
+
+  <div class="mt-4 rounded-2xl border border-white/10 bg-white/5 p-5">
+    <p class="text-xs text-slate-500">
+      As credenciais padrão são definidas pelas variáveis <code class="text-teal-400">ADMIN_USERNAME</code>
+      e <code class="text-teal-400">ADMIN_PASSWORD</code> no <code class="text-teal-400">.env</code>.
+      Alterar a senha aqui atualiza o banco de dados e sobrepõe o valor do <code>.env</code>
+      enquanto o container estiver rodando.
+    </p>
+  </div>
+</div>
+{% endblock %}
