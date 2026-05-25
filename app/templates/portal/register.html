@@ -1,0 +1,25 @@
+{% extends 'portal/base.html' %}
+{% block content %}
+<form method="post" action="{{ url_for('portal.register') }}" class="space-y-5">
+  <div>
+    <label class="mb-2 block text-sm font-medium text-slate-200">Nome completo</label>
+    <input name="full_name" type="text" required
+           class="w-full rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3 outline-none placeholder:text-slate-500 focus:border-teal-400"
+           placeholder="Seu nome completo">
+  </div>
+  <div>
+    <label class="mb-2 block text-sm font-medium text-slate-200">CPF</label>
+    <input name="cpf" type="text" required
+           class="w-full rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3 outline-none placeholder:text-slate-500 focus:border-teal-400"
+           placeholder="000.000.000-00">
+  </div>
+  <div class="rounded-2xl border border-white/10 bg-slate-900/60 px-4 py-3 text-sm text-slate-300">
+    <p>E-mail informado: <strong>{{ email }}</strong></p>
+    <p>Celular informado: <strong>{{ mobile }}</strong></p>
+  </div>
+  <button type="submit"
+          class="w-full rounded-2xl bg-brand-500 px-4 py-3 font-medium text-white transition hover:bg-brand-600">
+    Cadastrar e liberar acesso
+  </button>
+</form>
+{% endblock %}

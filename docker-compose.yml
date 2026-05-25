@@ -1,0 +1,99 @@
+services:
+
+  db:
+    image: mysql:8.4
+    container_name: unifi_portal_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootsecret}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-unifi_portal}
+      MYSQL_USER: ${MYSQL_USER:-portal}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-portalsecret}
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD:-rootsecret}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - internal
+
+  migrator:
+    build: .
+    container_name: unifi_portal_migrator
+    command: alembic upgrade head
+    env_file: .env
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - internal
+
+  web:
+    build: .
+    container_name: unifi_portal_web
+    restart: unless-stopped
+    env_file: .env
+    expose:
+      - "5000"
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - internal
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: unifi_portal_nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - ./certbot/www:/var/www/certbot:ro
+      - ./certbot/conf:/etc/letsencrypt:ro
+    depends_on:
+      web:
+        condition: service_healthy
+    networks:
+      - internal
+
+  certbot-renew:
+    image: certbot/certbot:latest
+    container_name: unifi_portal_certbot_renew
+    restart: unless-stopped
+    entrypoint: /bin/sh -c
+    command: >
+      "trap exit TERM;
+       while :; do
+         certbot renew
+           --webroot
+           --webroot-path /var/www/certbot
+           --deploy-hook 'curl -s --unix-socket /var/run/docker.sock
+             http://localhost/containers/unifi_portal_nginx/kill?signal=HUP'
+           --quiet;
+         sleep 12h & wait $${!};
+       done"
+    volumes:
+      - ./certbot/www:/var/www/certbot:rw
+      - ./certbot/conf:/etc/letsencrypt:rw
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - internal
+
+volumes:
+  db_data:
+
+networks:
+  internal:
+    driver: bridge

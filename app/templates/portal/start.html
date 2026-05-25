@@ -1,0 +1,24 @@
+{% extends 'portal/base.html' %}
+{% block content %}
+<form method="post" action="{{ url_for('portal.identify') }}" class="space-y-5">
+  <div>
+    <label for="email" class="mb-2 block text-sm font-medium text-slate-200">E-mail</label>
+    <input id="email" name="email" type="email" required
+           class="w-full rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3 outline-none placeholder:text-slate-500 focus:border-teal-400"
+           placeholder="voce@empresa.com">
+  </div>
+  <div>
+    <label for="mobile" class="mb-2 block text-sm font-medium text-slate-200">Telefone celular</label>
+    <input id="mobile" name="mobile" type="tel" required
+           class="w-full rounded-2xl border border-white/10 bg-slate-950/40 px-4 py-3 outline-none placeholder:text-slate-500 focus:border-teal-400"
+           placeholder="(47) 99999-9999">
+  </div>
+  <div class="rounded-2xl border border-teal-400/20 bg-teal-400/10 px-4 py-3 text-sm text-teal-100">
+    Rede: <span class="font-semibold">{{ ssid or 'Visitantes' }}</span>
+  </div>
+  <button type="submit"
+          class="w-full rounded-2xl bg-brand-500 px-4 py-3 font-medium text-white transition hover:bg-brand-600">
+    Continuar
+  </button>
+</form>
+{% endblock %}
