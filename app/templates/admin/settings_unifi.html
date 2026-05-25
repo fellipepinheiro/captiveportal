@@ -1,59 +1,69 @@
 {% extends 'admin/base.html' %}
-{% block title %}UniFi{% endblock %}
+{% block title %}Configurações UniFi{% endblock %}
 {% block content %}
 <div class="mb-6">
   <h1 class="text-xl font-semibold">Configurações UniFi</h1>
-  <p class="text-sm text-slate-400 mt-0.5">Conexão com o controlador e parâmetros de autorização.</p>
+  <p class="text-sm text-slate-400 mt-0.5">Conexão com o controlador UniFi e parâmetros de acesso guest.</p>
 </div>
 
-<div class="max-w-xl">
-  <div class="bg-slate-900 border border-white/5 rounded-2xl p-6 space-y-5">
+<div class="max-w-xl space-y-6">
 
+  <div class="bg-slate-900 border border-white/5 rounded-2xl p-6">
     <form method="post" action="{{ url_for('admin.settings_unifi_save') }}" class="space-y-4">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
       <div>
-        <label class="block text-xs font-medium text-slate-400 mb-1.5">URL do controlador UniFi</label>
+        <label class="block text-xs text-slate-400 mb-1">URL do controlador</label>
         <input type="url" name="unifi_base_url" value="{{ cfg.unifi_base_url }}"
                placeholder="https://192.168.1.1"
-               class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2.5 text-sm text-slate-100
-                      placeholder-slate-600 focus:outline-none focus:border-teal-500/50 transition">
-      </div>
-      <div>
-        <label class="block text-xs font-medium text-slate-400 mb-1.5">API Key</label>
-        <input type="password" name="unifi_api_key" value="{{ cfg.unifi_api_key }}"
-               placeholder="••••••••••••••••"
-               class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2.5 text-sm text-slate-100
+               class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-100
                       focus:outline-none focus:border-teal-500/50 transition">
       </div>
+
       <div>
-        <label class="block text-xs font-medium text-slate-400 mb-1.5">Site ID</label>
+        <label class="block text-xs text-slate-400 mb-1">API Key</label>
+        <input type="password" name="unifi_api_key" value="{{ cfg.unifi_api_key }}"
+               placeholder="Token de acesso à API UniFi"
+               class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-100
+                      focus:outline-none focus:border-teal-500/50 transition">
+      </div>
+
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">Site ID</label>
         <input type="text" name="unifi_site_id" value="{{ cfg.unifi_site_id }}"
                placeholder="default"
-               class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2.5 text-sm text-slate-100
-                      placeholder-slate-600 focus:outline-none focus:border-teal-500/50 transition">
-      </div>
-      <div>
-        <label class="block text-xs font-medium text-slate-400 mb-1.5">Tempo de sessão (minutos)</label>
-        <input type="number" name="guest_auth_minutes" value="{{ cfg.guest_auth_minutes }}" min="5" max="10080"
-               class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2.5 text-sm text-slate-100
+               class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-100
                       focus:outline-none focus:border-teal-500/50 transition">
-        <p class="text-xs text-slate-500 mt-1">480 min = 8h · 1440 min = 24h · 10080 min = 7 dias</p>
       </div>
-      <div class="flex gap-3 pt-1">
-        <button type="submit" class="flex-1 rounded-xl bg-teal-600 hover:bg-teal-500 py-2.5 text-sm font-semibold text-white transition">
-          Salvar
-        </button>
-        <button type="button" formaction="{{ url_for('admin.settings_unifi_test') }}" formmethod="post"
-                onclick="this.closest('form').action='{{ url_for('admin.settings_unifi_test') }}';this.closest('form').submit()"
-                class="flex-1 rounded-xl border border-teal-500/30 bg-teal-500/10 hover:bg-teal-500/20
-                       py-2.5 text-sm font-semibold text-teal-300 transition">
-          Testar conexão
-        </button>
-      </div>
-    </form>
 
-    <div class="border-t border-white/5 pt-4">
-      <p class="text-xs text-slate-500">As configurações salvas aqui substituem as variáveis de ambiente do <code class="text-slate-400">.env</code>.</p>
-    </div>
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">Tempo de sessão (minutos)</label>
+        <input type="number" name="guest_auth_minutes" value="{{ cfg.guest_auth_minutes }}"
+               min="5" max="10080"
+               class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-100
+                      focus:outline-none focus:border-teal-500/50 transition">
+        <p class="text-xs text-slate-500 mt-1">480 = 8 horas • 1440 = 24 horas</p>
+      </div>
+
+      <button type="submit"
+              class="w-full rounded-xl bg-teal-600 hover:bg-teal-500 py-2.5 text-sm font-semibold text-white transition">
+        Salvar configurações
+      </button>
+    </form>
   </div>
+
+  <!-- Teste de conexão -->
+  <div class="bg-slate-900 border border-white/5 rounded-2xl p-6">
+    <h2 class="text-sm font-medium mb-2">Testar conexão</h2>
+    <p class="text-xs text-slate-400 mb-4">Verifica se o portal consegue se comunicar com o controlador usando as configurações salvas.</p>
+    <form method="post" action="{{ url_for('admin.settings_unifi_test') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit"
+              class="rounded-xl border border-teal-500/30 bg-teal-500/10 px-5 py-2 text-sm text-teal-300 hover:bg-teal-500/20 transition">
+        Testar agora
+      </button>
+    </form>
+  </div>
+
 </div>
 {% endblock %}
