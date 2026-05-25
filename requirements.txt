@@ -30,6 +30,9 @@ structlog>=24.0
 requests>=2.32
 urllib3>=2.2
 
+# Validacao de telefone
+phonenumbers>=8.13
+
 # Servidor WSGI (producao)
 gunicorn>=22,<24
 
