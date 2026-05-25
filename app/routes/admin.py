@@ -175,6 +175,9 @@ def upload_logo():
     UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
     logo_path = UPLOAD_FOLDER / "logo.png"
     logo_path.write_bytes(data)
+    # Registra a URL da logo no banco para o context_processor injetar nos templates
+    SiteConfig.set("custom_logo_url", "/static/uploads/logo.png")
+    db.session.commit()
     flash("Logo atualizada com sucesso.", "success")
     return redirect(url_for("admin.settings_appearance"))
 
@@ -185,6 +188,9 @@ def remove_logo():
     logo_path = UPLOAD_FOLDER / "logo.png"
     if logo_path.exists():
         logo_path.unlink()
+    # Remove a referencia da logo do banco
+    SiteConfig.set("custom_logo_url", "")
+    db.session.commit()
     flash("Logo removida.", "success")
     return redirect(url_for("admin.settings_appearance"))
 
