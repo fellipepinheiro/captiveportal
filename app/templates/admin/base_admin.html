@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Admin{% endblock %} &mdash; Portal WiFi</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>body{font-family:'Inter','Segoe UI',sans-serif;}</style>
+</head>
+<body class="min-h-full bg-gray-50 flex">
+  <!-- Sidebar -->
+  <aside class="w-56 min-h-screen bg-white border-r border-gray-100 flex flex-col shrink-0">
+    <div class="px-5 py-5 border-b border-gray-50">
+      <span class="font-bold text-[#01696f] text-lg">Portal WiFi</span>
+      <span class="block text-xs text-gray-400">Administra&ccedil;&atilde;o</span>
+    </div>
+    <nav class="flex-1 px-3 py-4 space-y-1">
+      <a href="/admin/" class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+        Dashboard
+      </a>
+      <a href="/admin/visitantes" class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+        Visitantes
+      </a>
+    </nav>
+    <div class="px-3 py-4 border-t border-gray-50">
+      <a href="/admin/logout" class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Sair
+      </a>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="flex-1 overflow-auto p-6">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="mb-4 space-y-2">
+          {% for category, message in messages %}
+            <div class="rounded-xl px-4 py-3 text-sm
+              {% if category == 'error' %}bg-red-50 border border-red-200 text-red-800
+              {% else %}bg-green-50 border border-green-200 text-green-800{% endif %}">
+              {{ message }}
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

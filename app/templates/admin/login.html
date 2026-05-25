@@ -1,42 +1,48 @@
-{% extends 'admin/base.html' %}
-{% block full_content %}
-<div class="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-800 flex items-center justify-center px-4">
-  <div class="w-full max-w-sm">
-
-    <div class="mb-8 text-center">
-      <div class="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-teal-600/20 mb-4">
-        <svg class="h-7 w-7 text-teal-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M5.636 5.636a9 9 0 1 0 12.728 0M12 3v9"/>
-        </svg>
+<!DOCTYPE html>
+<html lang="pt-BR" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin &mdash; Login</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>body{font-family:'Inter','Segoe UI',sans-serif;}</style>
+</head>
+<body class="min-h-full bg-gray-50 flex items-center justify-center p-4">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="fixed top-4 right-4 z-50 space-y-2 max-w-sm w-full">
+        {% for category, message in messages %}
+          <div class="rounded-xl px-4 py-3 shadow text-sm
+            {% if category == 'error' %}bg-red-50 border border-red-200 text-red-800
+            {% else %}bg-green-50 border border-green-200 text-green-800{% endif %}">
+            {{ message }}
+          </div>
+        {% endfor %}
       </div>
-      <h1 class="text-2xl font-semibold text-white">Painel Admin</h1>
-      <p class="text-sm text-slate-400 mt-1">Portal Wi-Fi UniFi</p>
-    </div>
+    {% endif %}
+  {% endwith %}
 
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% for cat, msg in messages %}
-        <div class="mb-4 rounded-xl px-4 py-3 text-sm bg-rose-500/10 border border-rose-400/20 text-rose-200">{{ msg }}</div>
-      {% endfor %}
-    {% endwith %}
-
-    <form method="post" class="bg-slate-900 border border-white/10 rounded-2xl p-8 shadow-2xl space-y-5">
-      <div>
-        <label class="block text-xs font-medium text-slate-400 mb-1.5">Usuário</label>
-        <input type="text" name="username" value="{{ username or '' }}" required autofocus
-               class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2.5 text-sm text-slate-100
-                      placeholder-slate-500 focus:outline-none focus:border-teal-500/50 focus:bg-white/8 transition">
-      </div>
-      <div>
-        <label class="block text-xs font-medium text-slate-400 mb-1.5">Senha</label>
-        <input type="password" name="password" required
-               class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2.5 text-sm text-slate-100
-                      placeholder-slate-500 focus:outline-none focus:border-teal-500/50 transition">
+  <div class="w-full max-w-sm bg-white rounded-2xl shadow-sm border border-gray-100 p-8">
+    <h1 class="text-xl font-bold text-gray-900 mb-6 text-center">Administra&ccedil;&atilde;o</h1>
+    <form method="POST" action="/admin/login">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="space-y-4">
+        <div>
+          <label for="email" class="block text-sm font-medium text-gray-700 mb-1">E-mail</label>
+          <input type="email" id="email" name="email" required
+            class="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm bg-gray-50">
+        </div>
+        <div>
+          <label for="password" class="block text-sm font-medium text-gray-700 mb-1">Senha</label>
+          <input type="password" id="password" name="password" required
+            class="w-full rounded-xl border border-gray-200 px-4 py-3 text-sm bg-gray-50">
+        </div>
       </div>
       <button type="submit"
-              class="w-full rounded-xl bg-teal-600 hover:bg-teal-500 py-2.5 text-sm font-semibold text-white transition active:scale-95">
+        class="mt-6 w-full bg-[#01696f] hover:bg-[#0c4e54] text-white font-semibold py-3 rounded-xl transition-colors text-sm">
         Entrar
       </button>
     </form>
   </div>
-</div>
-{% endblock %}
+</body>
+</html>

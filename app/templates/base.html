@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="h-full">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Portal WiFi{% endblock %}</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            primary: { DEFAULT: '#01696f', hover: '#0c4e54', light: '#cedcd8' },
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: 'Inter', 'Segoe UI', sans-serif; }
+    .fade-in { animation: fadeIn 0.4s ease; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    input:focus { outline: 2px solid #01696f; outline-offset: 2px; }
+  </style>
+  {% block extra_head %}{% endblock %}
+</head>
+<body class="min-h-full bg-gray-50 flex flex-col">
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="fixed top-4 right-4 z-50 space-y-2 max-w-sm w-full">
+        {% for category, message in messages %}
+          <div class="flex items-start gap-3 rounded-xl px-4 py-3 shadow-lg text-sm font-medium
+            {% if category == 'error' %}bg-red-50 border border-red-200 text-red-800
+            {% else %}bg-green-50 border border-green-200 text-green-800{% endif %}">
+            {% if category == 'error' %}
+              <svg class="w-4 h-4 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/></svg>
+            {% else %}
+              <svg class="w-4 h-4 mt-0.5 shrink-0" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clip-rule="evenodd"/></svg>
+            {% endif %}
+            <span>{{ message }}</span>
+          </div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+
+  <main class="flex-1 flex items-center justify-center p-4">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="text-center text-xs text-gray-400 py-4">
+    Sua privacidade &eacute; importante. <a href="{{ config.PRIVACY_POLICY_URL }}" class="underline hover:text-primary">Pol&iacute;tica de Privacidade</a>
+  </footer>
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

@@ -1,50 +1,58 @@
-{% extends 'admin/base.html' %}
+{% extends 'admin/base_admin.html' %}
 {% block title %}Dashboard{% endblock %}
 {% block content %}
-<div class="mb-6">
-  <h1 class="text-xl font-semibold">Dashboard</h1>
-  <p class="text-sm text-slate-400 mt-0.5">Visão geral do portal captivo</p>
-</div>
+<div class="space-y-6">
+  <h1 class="text-xl font-bold text-gray-900">Dashboard</h1>
 
-<!-- KPIs -->
-<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
-  {% for label, value, color, icon in [
-    ('Visitantes', total_visitors, 'teal', 'users'),
-    ('Sessões totais', total_sessions, 'blue', 'monitor'),
-    ('Autorizados', authorized_sessions, 'green', 'check-circle'),
-    ('Erros', error_logs, 'rose', 'alert-triangle'),
-  ] %}
-  <div class="bg-slate-900 border border-white/5 rounded-2xl p-5">
-    <div class="flex items-center justify-between mb-3">
-      <span class="text-xs text-slate-400">{{ label }}</span>
-      <span class="h-8 w-8 rounded-lg bg-{{ color }}-500/10 flex items-center justify-center">
-        <i class="icon-{{ icon }} text-{{ color }}-400 text-sm"></i>
-      </span>
+  <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+      <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Visitantes</p>
+      <p class="text-3xl font-bold text-gray-900 mt-1">{{ total_visitors }}</p>
     </div>
-    <p class="text-2xl font-semibold tabular-nums">{{ value }}</p>
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+      <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Sess&otilde;es</p>
+      <p class="text-3xl font-bold text-gray-900 mt-1">{{ total_sessions }}</p>
+    </div>
+    <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+      <p class="text-xs font-medium text-gray-500 uppercase tracking-wide">Autorizadas</p>
+      <p class="text-3xl font-bold text-[#01696f] mt-1">{{ authorized_sessions }}</p>
+    </div>
   </div>
-  {% endfor %}
-</div>
 
-<!-- Logs recentes -->
-<div class="bg-slate-900 border border-white/5 rounded-2xl overflow-hidden">
-  <div class="px-5 py-4 border-b border-white/5 flex items-center justify-between">
-    <h2 class="text-sm font-medium">Logs recentes</h2>
-    <a href="{{ url_for('admin.logs') }}" class="text-xs text-teal-400 hover:text-teal-300 transition">Ver todos →</a>
-  </div>
-  <div class="divide-y divide-white/5">
-    {% for log in recent_logs %}
-    <div class="px-5 py-3 flex items-center gap-3 text-sm">
-      <span class="h-2 w-2 rounded-full shrink-0 {% if log.status == 'success' %}bg-teal-400{% else %}bg-rose-400{% endif %}"></span>
-      <span class="flex-1 text-slate-300 truncate">{{ log.event_type }} — {{ log.payload or '—' }}</span>
-      {% if log.error_message %}
-        <span class="text-xs text-rose-400 truncate max-w-[180px]">{{ log.error_message }}</span>
-      {% endif %}
-      <span class="text-xs text-slate-500 shrink-0">{{ log.created_at.strftime('%d/%m %H:%M') }}</span>
+  <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+    <div class="px-5 py-4 border-b border-gray-50">
+      <h2 class="font-semibold text-gray-800 text-sm">Sess&otilde;es Recentes</h2>
     </div>
-    {% else %}
-    <div class="px-5 py-8 text-center text-sm text-slate-500">Nenhum log ainda.</div>
-    {% endfor %}
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead class="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+          <tr>
+            <th class="px-4 py-3 text-left">MAC Cliente</th>
+            <th class="px-4 py-3 text-left">SSID</th>
+            <th class="px-4 py-3 text-left">Status</th>
+            <th class="px-4 py-3 text-left">Criado em</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-gray-50">
+          {% for s in recent %}
+          <tr class="hover:bg-gray-50">
+            <td class="px-4 py-3 font-mono text-xs">{{ s.mac_client }}</td>
+            <td class="px-4 py-3 text-gray-600">{{ s.ssid or '-' }}</td>
+            <td class="px-4 py-3">
+              {% if s.authorized %}
+                <span class="inline-flex items-center gap-1 text-xs font-medium text-green-700 bg-green-50 rounded-full px-2 py-0.5">Autorizado</span>
+              {% else %}
+                <span class="inline-flex items-center gap-1 text-xs font-medium text-yellow-700 bg-yellow-50 rounded-full px-2 py-0.5">Pendente</span>
+              {% endif %}
+            </td>
+            <td class="px-4 py-3 text-gray-400 text-xs">{{ s.created_at.strftime('%d/%m/%Y %H:%M') if s.created_at }}</td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="px-4 py-8 text-center text-gray-400">Nenhuma sess&atilde;o ainda.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
   </div>
 </div>
 {% endblock %}
