@@ -15,3 +15,7 @@ class Config:
     GUEST_AUTH_MINUTES = int(os.getenv('GUEST_AUTH_MINUTES', '480'))
 
     WTF_CSRF_ENABLED = os.getenv('WTF_CSRF_ENABLED', 'true').lower() == 'true'
+
+    # Admin
+    ADMIN_USERNAME = os.getenv('ADMIN_USERNAME', 'admin')
+    ADMIN_PASSWORD = os.getenv('ADMIN_PASSWORD', 'admin123')
