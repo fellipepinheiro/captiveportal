@@ -37,26 +37,26 @@ def entry():
     )
 
 
-@bp.post("/guest/check")
+@bp.post("/guest/identify")
 @limiter.limit("10 per minute")
-def check_visitor():
+def identify():
     portal_session = _get_portal_session()
     if not portal_session:
         flash("Sessao expirada. Por favor, conecte-se novamente.", "error")
         return redirect(url_for("portal.entry"))
 
     email = request.form.get("email", "").strip().lower()
-    phone = request.form.get("phone", "").strip()
+    mobile = request.form.get("mobile", "").strip()
 
-    if not email or not phone:
+    if not email or not mobile:
         flash("Preencha e-mail e celular.", "error")
         return redirect(url_for("portal.entry"))
 
-    if not validate_phone(phone):
+    if not validate_phone(mobile):
         flash("Numero de celular invalido.", "error")
         return redirect(url_for("portal.entry"))
 
-    visitor = Visitor.find_by_email_or_mobile(email, phone)
+    visitor = Visitor.find_by_email_or_mobile(email, mobile)
     if visitor:
         ok = authorize_visitor(portal_session, visitor)
         if ok:
@@ -69,7 +69,7 @@ def check_visitor():
         return redirect(url_for("portal.entry"))
 
     session["reg_email"] = email
-    session["reg_phone"] = normalize_phone(phone)
+    session["reg_mobile"] = normalize_phone(mobile)
     return redirect(url_for("portal.register"))
 
 
@@ -83,6 +83,7 @@ def register():
     return render_template(
         "portal/register.html",
         email=session.get("reg_email"),
+        mobile=session.get("reg_mobile"),
         privacy_url=current_app.config["PRIVACY_POLICY_URL"],
         terms_version=current_app.config["TERMS_VERSION"],
     )
@@ -97,8 +98,8 @@ def register_submit():
         return redirect(url_for("portal.entry"))
 
     email = session.get("reg_email", "").strip().lower()
-    phone = session.get("reg_phone", "").strip()
-    full_name = request.form.get("name", "").strip()
+    mobile = session.get("reg_mobile", "").strip()
+    full_name = request.form.get("full_name", "").strip()
     cpf = request.form.get("cpf", "").strip()
     marketing_optin = bool(request.form.get("marketing_optin"))
     terms_accepted = bool(request.form.get("terms_accepted"))
@@ -113,17 +114,15 @@ def register_submit():
         flash("CPF invalido.", "error")
         return redirect(url_for("portal.register"))
 
-    # Verifica se ja existe visitante com este CPF (evita IntegrityError 1062)
     visitor = Visitor.query.filter_by(cpf=cpf).first()
     created = False
     if visitor is None:
-        visitor = Visitor.create(full_name=full_name, email=email, mobile=phone, cpf=cpf)
+        visitor = Visitor.create(full_name=full_name, email=email, mobile=mobile, cpf=cpf)
         db.session.add(visitor)
         try:
             db.session.flush()
             created = True
         except IntegrityError:
-            # Race condition: outro request inseriu entre o SELECT e o INSERT
             db.session.rollback()
             visitor = Visitor.query.filter_by(cpf=cpf).first()
             if visitor is None:
@@ -137,7 +136,7 @@ def register_submit():
 
     ok = authorize_visitor(portal_session, visitor)
     session.pop("reg_email", None)
-    session.pop("reg_phone", None)
+    session.pop("reg_mobile", None)
 
     if ok:
         return render_template(
