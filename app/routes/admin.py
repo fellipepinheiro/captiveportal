@@ -51,7 +51,7 @@ def _load_cfg() -> dict:
     return cfg
 
 
-# ─── Auth ────────────────────────────────────────────────────────────────────────
+# ─── Auth ───────────────────────────────────────────────────────────────────────────────
 
 @bp.get("/login")
 def login():
@@ -80,7 +80,7 @@ def logout():
     return redirect(url_for("admin.login"))
 
 
-# ─── Dashboard ───────────────────────────────────────────────────────────────────
+# ─── Dashboard ─────────────────────────────────────────────────────────────────────────────────
 
 @bp.get("/")
 @login_required
@@ -104,7 +104,7 @@ def dashboard():
     )
 
 
-# ─── Visitors ────────────────────────────────────────────────────────────────────
+# ─── Visitors ───────────────────────────────────────────────────────────────────────────────
 
 @bp.get("/visitantes")
 @login_required
@@ -114,7 +114,6 @@ def visitors():
     show_blocked = request.args.get("blocked", "") == "1"
     query        = Visitor.query.order_by(Visitor.created_at.desc())
     if q:
-        # Busca segura com ilike — sem interpolação direta na query
         query = query.filter(
             (Visitor.full_name.ilike(f"%{q}%")) |
             (Visitor.email.ilike(f"%{q}%"))
@@ -180,7 +179,7 @@ def export_visitors():
     )
 
 
-# ─── Reports ─────────────────────────────────────────────────────────────────────
+# ─── Reports ────────────────────────────────────────────────────────────────────────────────
 
 @bp.get("/relatorios")
 @login_required
@@ -193,7 +192,6 @@ def reports():
 def reports_data():
     from sqlalchemy import func, cast, Date, case as sa_case
 
-    # Valida e limita o parâmetro 'days' (1–365)
     try:
         days = max(1, min(int(request.args.get("days", 30)), 365))
     except (ValueError, TypeError):
@@ -272,7 +270,7 @@ def reports_data():
     })
 
 
-# ─── Integrations ───────────────────────────────────────────────────────────────
+# ─── Integrations ───────────────────────────────────────────────────────────────────────────
 
 @bp.get("/integracoes")
 @login_required
@@ -308,7 +306,7 @@ def integrations_save():
 @login_required
 @limiter.limit("5 per minute")
 def integrations_test():
-    import hashlib, hmac, json, urllib.request, urllib.parse
+    import hashlib, hmac, json, urllib.request, urllib.parse, os
 
     url    = SiteConfig.get("webhook_url", "").strip()
     secret = SiteConfig.get("webhook_secret", "changeme")
@@ -317,13 +315,16 @@ def integrations_test():
         flash("Configure a URL do webhook primeiro.", "error")
         return redirect(url_for("admin.integrations"))
 
-    # SSRF guard — bloqueia IPs internos
-    parsed = urllib.parse.urlparse(url)
-    hostname = parsed.hostname or ""
-    _BLOCKED = ("localhost", "127.", "10.", "172.16.", "192.168.", "::1")
-    if any(hostname.startswith(b) for b in _BLOCKED):
-        flash("URL de destino não permitida (endereço interno).", "error")
-        return redirect(url_for("admin.integrations"))
+    # SSRF guard — desabilitável via ALLOW_PRIVATE_WEBHOOK=true para ambientes on-premise
+    allow_private = os.environ.get("ALLOW_PRIVATE_WEBHOOK", "false").lower() == "true"
+    if not allow_private:
+        parsed   = urllib.parse.urlparse(url)
+        hostname = parsed.hostname or ""
+        _BLOCKED = ("localhost", "127.", "10.", "172.16.", "192.168.", "::1")
+        if any(hostname == b or hostname.startswith(b) for b in _BLOCKED):
+            flash("URL de destino não permitida (endereço interno). "
+                  "Defina ALLOW_PRIVATE_WEBHOOK=true no .env para ambientes on-premise.", "error")
+            return redirect(url_for("admin.integrations"))
 
     payload = {
         "event":     "webhook_test",
@@ -349,7 +350,7 @@ def integrations_test():
     return redirect(url_for("admin.integrations"))
 
 
-# ─── Appearance ──────────────────────────────────────────────────────────────────
+# ─── Appearance ──────────────────────────────────────────────────────────────────────────────
 
 @bp.get("/aparencia")
 @login_required
@@ -374,13 +375,13 @@ def settings_appearance_save():
     text_keys = ["portal_title", "portal_welcome"]
 
     for key in text_keys:
-        val = request.form.get(key, "").strip()[:200]   # limita tamanho
+        val = request.form.get(key, "").strip()[:200]
         if val:
             SiteConfig.set(key, val)
 
     for key in color_keys:
         val = request.form.get(key, "").strip()
-        if val and _valid_hex(val):                      # valida formato hex
+        if val and _valid_hex(val):
             SiteConfig.set(key, val)
         elif val:
             flash(f"Cor inválida para {key}. Use formato #RRGGBB.", "error")
@@ -409,7 +410,7 @@ def upload_logo():
         flash("Nenhum arquivo selecionado.", "error")
         return redirect(url_for("admin.settings_appearance"))
 
-    filename = secure_filename(file.filename)           # sanitiza nome
+    filename = secure_filename(file.filename)
     if not _allowed(filename):
         flash("Formato inválido. Use PNG, JPG ou WEBP.", "error")
         return redirect(url_for("admin.settings_appearance"))
@@ -419,7 +420,6 @@ def upload_logo():
         flash("Arquivo muito grande. Máximo 2 MB.", "error")
         return redirect(url_for("admin.settings_appearance"))
 
-    # Verifica magic bytes para garantir que é realmente uma imagem
     MAGIC = {
         b'\x89PNG': 'png',
         b'\xff\xd8\xff': 'jpg',
@@ -451,7 +451,7 @@ def remove_logo():
     return redirect(url_for("admin.settings_appearance"))
 
 
-# ─── Admin Users ─────────────────────────────────────────────────────────────────
+# ─── Admin Users ───────────────────────────────────────────────────────────────────────────────
 
 @bp.get("/usuarios")
 @login_required
@@ -465,10 +465,10 @@ def users():
 def user_create():
     username = request.form.get("username", "").strip()
     password = request.form.get("password", "")
-    if not username or len(password) < 12:              # senha mínima elevada para 12
+    if not username or len(password) < 12:
         flash("Username obrigatório e senha deve ter ao menos 12 caracteres.", "error")
         return redirect(url_for("admin.users"))
-    if not re.match(r'^[\w.-]{3,64}$', username):       # valida formato do username
+    if not re.match(r'^[\w.-]{3,64}$', username):
         flash("Username deve ter entre 3 e 64 caracteres alfanuméricos.", "error")
         return redirect(url_for("admin.users"))
     if AdminUser.query.filter_by(username=username).first():
@@ -501,7 +501,7 @@ def user_toggle(uid: int):
 def user_password(uid: int):
     user         = AdminUser.query.get_or_404(uid)
     new_password = request.form.get("new_password", "")
-    if len(new_password) < 12:                          # consistente com user_create
+    if len(new_password) < 12:
         flash("A senha deve ter ao menos 12 caracteres.", "error")
         return redirect(url_for("admin.users"))
     user.set_password(new_password)
