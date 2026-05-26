@@ -10,6 +10,9 @@
   </div>
 </div>
 
+<!-- Alerta de erro -->
+<div id="errorBanner" class="hidden mb-4 px-4 py-3 rounded-xl bg-red-500/15 border border-red-500/30 text-red-400 text-sm"></div>
+
 <!-- KPIs do período -->
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
   <div class="bg-white/5 border border-white/10 rounded-xl p-4">
@@ -57,9 +60,18 @@ const chartDevice = echarts.init(document.getElementById('chartDevice'), 'dark')
 const chartOS     = echarts.init(document.getElementById('chartOS'),     'dark');
 
 [chartLine, chartDevice, chartOS].forEach(c => {
-  c.getZr().getRenderer();
   c.setOption({ backgroundColor: 'transparent' });
 });
+
+function showError(msg) {
+  const el = document.getElementById('errorBanner');
+  el.textContent = '⚠️ Erro ao carregar dados: ' + msg;
+  el.classList.remove('hidden');
+}
+
+function clearError() {
+  document.getElementById('errorBanner').classList.add('hidden');
+}
 
 function setPeriodBtn(days) {
   document.querySelectorAll('.period-btn').forEach(b => {
@@ -71,15 +83,36 @@ function setPeriodBtn(days) {
 }
 
 async function loadData(days = 30) {
+  clearError();
   setPeriodBtn(days);
-  const res  = await fetch(`/admin/relatorios/dados?days=${days}`);
-  const data = await res.json();
+
+  let res;
+  try {
+    res = await fetch(`/admin/relatorios/dados?days=${days}`);
+  } catch (err) {
+    showError('Falha de rede — ' + err.message);
+    return;
+  }
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    showError(`HTTP ${res.status} — ${text.slice(0, 200)}`);
+    return;
+  }
+
+  let data;
+  try {
+    data = await res.json();
+  } catch (err) {
+    showError('Resposta inválida (não é JSON) — ' + err.message);
+    return;
+  }
 
   // KPIs
-  document.getElementById('kpi-sessions').textContent   = data.totals.sessions.toLocaleString('pt-BR');
-  document.getElementById('kpi-authorized').textContent = data.totals.authorized.toLocaleString('pt-BR');
-  document.getElementById('kpi-visitors').textContent   = data.totals.new_visitors.toLocaleString('pt-BR');
-  document.getElementById('kpi-rate').textContent       = data.totals.auth_rate + '%';
+  document.getElementById('kpi-sessions').textContent   = (data.totals.sessions   ?? 0).toLocaleString('pt-BR');
+  document.getElementById('kpi-authorized').textContent = (data.totals.authorized  ?? 0).toLocaleString('pt-BR');
+  document.getElementById('kpi-visitors').textContent   = (data.totals.new_visitors ?? 0).toLocaleString('pt-BR');
+  document.getElementById('kpi-rate').textContent       = (data.totals.auth_rate   ?? 0) + '%';
 
   // Gráfico linha
   chartLine.setOption({
@@ -102,7 +135,7 @@ async function loadData(days = 30) {
     series: [{
       type: 'pie', radius: ['40%','70%'], center: ['50%','45%'],
       label: { show: false },
-      data: data.device_data.map((d,i) => ({ ...d, itemStyle: { color: COLORS[i % COLORS.length] } })),
+      data: (data.device_data || []).map((d,i) => ({ ...d, itemStyle: { color: COLORS[i % COLORS.length] } })),
     }],
   });
 
@@ -113,7 +146,7 @@ async function loadData(days = 30) {
     series: [{
       type: 'pie', radius: ['40%','70%'], center: ['50%','45%'],
       label: { show: false },
-      data: data.os_data.map((d,i) => ({ ...d, itemStyle: { color: COLORS[i % COLORS.length] } })),
+      data: (data.os_data || []).map((d,i) => ({ ...d, itemStyle: { color: COLORS[i % COLORS.length] } })),
     }],
   });
 }
