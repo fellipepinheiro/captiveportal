@@ -1,5 +1,6 @@
 import csv
 import io
+import os
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -51,7 +52,7 @@ def _load_cfg() -> dict:
     return cfg
 
 
-# ─── Auth ───────────────────────────────────────────────────────────────────────────────
+# ─── Auth ────────────────────────────────────────────────────────────────────────────────
 
 @bp.get("/login")
 def login():
@@ -67,7 +68,7 @@ def login_post():
     password = request.form.get("password", "")
     user = AdminUser.query.filter_by(username=username, is_active=True).first()
     if user and user.check_password(password):
-        login_user(user, remember=False)          # sem remember — sessão só até fechar o browser
+        login_user(user, remember=False)
         return redirect(url_for("admin.dashboard"))
     flash("Credenciais inválidas.", "error")
     return redirect(url_for("admin.login"))
@@ -290,7 +291,6 @@ def integrations():
 @login_required
 def integrations_save():
     webhook_url = request.form.get("webhook_url", "").strip()
-    # Aceita apenas URLs http/https (evita SSRF com outros esquemas)
     if webhook_url and not re.match(r'^https?://', webhook_url):
         flash("URL do webhook deve começar com http:// ou https://", "error")
         return redirect(url_for("admin.integrations"))
@@ -306,7 +306,10 @@ def integrations_save():
 @login_required
 @limiter.limit("5 per minute")
 def integrations_test():
-    import hashlib, hmac, json, urllib.request, urllib.parse, os
+    import hashlib, hmac, json
+    import requests as req_lib
+    import urllib.parse
+    import warnings
 
     url    = SiteConfig.get("webhook_url", "").strip()
     secret = SiteConfig.get("webhook_secret", "changeme")
@@ -326,6 +329,9 @@ def integrations_test():
                   "Defina ALLOW_PRIVATE_WEBHOOK=true no .env para ambientes on-premise.", "error")
             return redirect(url_for("admin.integrations"))
 
+    # Respeita UNIFI_VERIFY_SSL=false para certificados self-signed (ambientes on-premise)
+    verify_ssl = os.environ.get("UNIFI_VERIFY_SSL", "true").lower() != "false"
+
     payload = {
         "event":     "webhook_test",
         "message":   "Teste de integração do Captive Portal",
@@ -333,18 +339,22 @@ def integrations_test():
     }
     body = json.dumps(payload, default=str).encode()
     sig  = hmac.new(secret.encode(), body, hashlib.sha256).hexdigest()
+
     try:
-        req = urllib.request.Request(
-            url, data=body,
+        if not verify_ssl:
+            warnings.filterwarnings("ignore", message="Unverified HTTPS request")
+        resp = req_lib.post(
+            url,
+            data=body,
             headers={
                 "Content-Type": "application/json",
                 "X-Webhook-Signature": f"sha256={sig}",
                 "X-Webhook-Event": "webhook_test",
             },
-            method="POST",
+            timeout=8,
+            verify=verify_ssl,
         )
-        with urllib.request.urlopen(req, timeout=8) as resp:
-            flash(f"Webhook enviado com sucesso (HTTP {resp.status}).", "success")
+        flash(f"Webhook enviado com sucesso (HTTP {resp.status_code}).", "success")
     except Exception as exc:
         flash(f"Falha ao enviar webhook: {exc}", "error")
     return redirect(url_for("admin.integrations"))
