@@ -178,22 +178,28 @@ def reports():
 @login_required
 def reports_data():
     """
-    API JSON para o gráfico de acessos por dia.
+    API JSON para os gráficos de relatórios.
     Parâmetros:
       days  – janela em dias (padrão 30, máx 365)
-    Retorna:
-      { labels: [...], sessions: [...], authorized: [...], new_visitors: [...] }
     """
+    from sqlalchemy import func, cast, Date, case as sa_case
+
     days = min(int(request.args.get("days", 30)), 365)
     since = datetime.now(timezone.utc) - timedelta(days=days)
 
-    # Sessões por dia
-    from sqlalchemy import func, cast, Date
+    # Sessões por dia — usa sa_case para compatibilidade SA 1.4 e 2.x
+    auth_expr = func.sum(
+        sa_case(
+            (PortalSession.authorized == True, 1),
+            else_=0,
+        )
+    )
+
     sessions_by_day = (
         db.session.query(
             cast(PortalSession.created_at, Date).label("day"),
             func.count().label("total"),
-            func.sum(db.case((PortalSession.authorized == True, 1), else_=0)).label("auth"),
+            auth_expr.label("auth"),
         )
         .filter(PortalSession.created_at >= since)
         .group_by(cast(PortalSession.created_at, Date))
@@ -213,21 +219,20 @@ def reports_data():
         .all()
     )
 
-    # Montar série de datas completa
-    date_range = [(since + timedelta(days=i)).date() for i in range(days + 1)]
-    sessions_map  = {str(r.day): (r.total, r.auth)   for r in sessions_by_day}
-    visitors_map  = {str(r.day): r.total              for r in visitors_by_day}
+    # Série de datas completa
+    date_range    = [(since + timedelta(days=i)).date() for i in range(days + 1)]
+    sessions_map  = {str(r.day): (int(r.total), int(r.auth or 0)) for r in sessions_by_day}
+    visitors_map  = {str(r.day): int(r.total) for r in visitors_by_day}
 
     labels        = [d.strftime("%d/%m") for d in date_range]
     sessions_data = [sessions_map.get(str(d), (0, 0))[0] for d in date_range]
     auth_data     = [sessions_map.get(str(d), (0, 0))[1] for d in date_range]
-    new_vis_data  = [visitors_map.get(str(d), 0)         for d in date_range]
+    new_vis_data  = [visitors_map.get(str(d), 0) for d in date_range]
 
-    # Totais do período
-    total_s  = sum(sessions_data)
-    total_a  = sum(auth_data)
-    total_v  = sum(new_vis_data)
-    rate     = round(total_a / total_s * 100, 1) if total_s else 0
+    total_s = sum(sessions_data)
+    total_a = sum(auth_data)
+    total_v = sum(new_vis_data)
+    rate    = round(total_a / total_s * 100, 1) if total_s else 0
 
     # Device breakdown
     device_rows = (
@@ -236,10 +241,7 @@ def reports_data():
         .group_by(PortalSession.device_type)
         .all()
     )
-    device_data = [{
-        "name": r.device_type or "desconhecido",
-        "value": r.n,
-    } for r in device_rows]
+    device_data = [{"name": r.device_type or "desconhecido", "value": r.n} for r in device_rows]
 
     # OS breakdown
     os_rows = (
@@ -248,10 +250,7 @@ def reports_data():
         .group_by(PortalSession.os_hint)
         .all()
     )
-    os_data = [{
-        "name": r.os_hint or "Desconhecido",
-        "value": r.n,
-    } for r in os_rows]
+    os_data = [{"name": r.os_hint or "Desconhecido", "value": r.n} for r in os_rows]
 
     return jsonify({
         "labels":       labels,
