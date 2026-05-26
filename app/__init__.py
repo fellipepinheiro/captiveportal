@@ -1,4 +1,5 @@
 from flask import Flask
+from werkzeug.middleware.proxy_fix import ProxyFix
 from app.extensions import db, migrate, csrf, limiter, login_manager
 
 
@@ -8,6 +9,10 @@ def create_app(config_name=None):
     # Carrega configuracoes
     from app.config import get_config
     app.config.from_object(get_config(config_name))
+
+    # ProxyFix: extrai X-Real-IP / X-Forwarded-For enviados pelo nginx-proxy.
+    # x_for=1 significa confiar em 1 proxy na frente (o nginx-proxy do compose).
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
     # Inicializa extensoes
     db.init_app(app)
