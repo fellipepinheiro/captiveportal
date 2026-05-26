@@ -39,7 +39,7 @@
 
 <form method="post" action="{{ url_for('portal.register') }}" class="space-y-4"
       id="form-register" novalidate autocomplete="on">
-  {{ csrf_input() }}
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
   <!-- Nome -->
   <div>
