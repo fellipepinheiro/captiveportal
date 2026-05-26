@@ -24,22 +24,22 @@ def _get_portal_session():
 @bp.get("/guest/s/default/")
 @bp.get("/guest/")
 def entry():
-    client_mac  = request.args.get("id") or request.args.get("mac")
-    ap_mac      = request.args.get("ap")
-    ssid        = request.args.get("ssid", "WiFi")
-    redirect_url= request.args.get("url", "http://google.com")
+    client_mac   = request.args.get("id") or request.args.get("mac")
+    ap_mac       = request.args.get("ap")
+    ssid         = request.args.get("ssid", "WiFi")
+    redirect_url = request.args.get("url", "http://google.com")
 
-    # Sem MAC: acesso direto (teste ou redirect sem parâmetros)
-    # Não cria sessão no banco — apenas renderiza a página de entrada
-    if not client_mac:
-        return render_template(
-            "portal/start.html",
-            ssid=ssid,
-            privacy_url=current_app.config.get("PRIVACY_POLICY_URL", "#"),
-        )
-
-    portal_session = create_pending_session(client_mac, ap_mac, ssid, redirect_url)
-    session[PORTAL_SESSION_KEY] = portal_session.id
+    # Garante que a sessão Flask existe (necessário para o token CSRF)
+    # Mesmo sem MAC, inicializa a chave para que o Flask-WTF possa
+    # gerar e validar o csrf_token() no template.
+    if client_mac:
+        portal_session = create_pending_session(client_mac, ap_mac, ssid, redirect_url)
+        session[PORTAL_SESSION_KEY] = portal_session.id
+    else:
+        # Acesso direto / teste sem parâmetros UniFi
+        # Marca a sessão como modificada para que o cookie seja enviado
+        session[PORTAL_SESSION_KEY] = None
+        session.modified = True
 
     return render_template(
         "portal/start.html",
@@ -53,7 +53,7 @@ def entry():
 def identify():
     portal_session = _get_portal_session()
     if not portal_session:
-        flash("Sessão expirada. Por favor, conecte-se novamente.", "error")
+        flash("Sessão expirada. Por favor, conecte-se novamente ao WiFi.", "error")
         return redirect(url_for("portal.entry"))
 
     email  = request.form.get("email",  "").strip().lower()
@@ -66,14 +66,12 @@ def identify():
     if not validate_phone(mobile):
         flash("Número de celular inválido.", "error")
         return redirect(url_for("portal.entry"))
-    # Aceite de termos obrigatório desde a etapa 1
     if not request.form.get("terms_accepted"):
         flash("Você precisa aceitar os Termos de Uso para continuar.", "error")
         return redirect(url_for("portal.entry"))
 
     visitor = Visitor.find_by_email_or_mobile(email, mobile)
     if visitor:
-        # Visitante bloqueado
         if visitor.is_blocked:
             flash("Seu acesso foi restrito. Entre em contato com o suporte.", "error")
             return redirect(url_for("portal.entry"))
