@@ -3,7 +3,7 @@ from flask import (
     session, url_for, flash, current_app
 )
 from sqlalchemy.exc import IntegrityError
-from app.extensions import db, limiter
+from app.extensions import db, limiter, csrf
 from app.models import Visitor, PortalSession
 from app.services.portal_service import (
     create_pending_session, authorize_visitor, record_consent
@@ -23,21 +23,17 @@ def _get_portal_session():
 
 @bp.get("/guest/s/default/")
 @bp.get("/guest/")
+@csrf.exempt
 def entry():
     client_mac   = request.args.get("id") or request.args.get("mac")
     ap_mac       = request.args.get("ap")
     ssid         = request.args.get("ssid", "WiFi")
     redirect_url = request.args.get("url", "http://google.com")
 
-    # Garante que a sessão Flask existe (necessário para o token CSRF)
-    # Mesmo sem MAC, inicializa a chave para que o Flask-WTF possa
-    # gerar e validar o csrf_token() no template.
     if client_mac:
         portal_session = create_pending_session(client_mac, ap_mac, ssid, redirect_url)
         session[PORTAL_SESSION_KEY] = portal_session.id
     else:
-        # Acesso direto / teste sem parâmetros UniFi
-        # Marca a sessão como modificada para que o cookie seja enviado
         session[PORTAL_SESSION_KEY] = None
         session.modified = True
 
@@ -49,6 +45,7 @@ def entry():
 
 
 @bp.post("/guest/identify")
+@csrf.exempt
 @limiter.limit("10 per minute")
 def identify():
     portal_session = _get_portal_session()
@@ -59,7 +56,6 @@ def identify():
     email  = request.form.get("email",  "").strip().lower()
     mobile = request.form.get("mobile", "").strip()
 
-    # Validações
     if not email or not mobile:
         flash("Preencha e-mail e celular.", "error")
         return redirect(url_for("portal.entry"))
@@ -86,13 +82,13 @@ def identify():
         flash("Não foi possível autorizar o acesso agora. Tente novamente.", "error")
         return redirect(url_for("portal.entry"))
 
-    # Novo visitante → cadastro
     session["reg_email"]  = email
     session["reg_mobile"] = normalize_phone(mobile)
     return redirect(url_for("portal.register"))
 
 
 @bp.get("/guest/cadastro")
+@csrf.exempt
 def register():
     if not session.get("reg_email"):
         return redirect(url_for("portal.entry"))
@@ -109,6 +105,7 @@ def register():
 
 
 @bp.post("/guest/cadastro")
+@csrf.exempt
 @limiter.limit("5 per minute")
 def register_submit():
     portal_session = _get_portal_session()
