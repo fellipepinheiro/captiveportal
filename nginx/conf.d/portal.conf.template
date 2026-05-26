@@ -1,0 +1,67 @@
+# nginx/conf.d/portal.conf.template
+# Gerado dinamicamente pelo entrypoint a partir de DOMAIN no .env
+# Use: envsubst '${DOMAIN}' < portal.conf.template > portal.conf
+
+# ── HTTP → redireciona para HTTPS + serve challenge do Certbot ──────────────
+server {
+    listen 80;
+    server_name ${DOMAIN};
+
+    # Rota do ACME challenge (certbot webroot)
+    location /.well-known/acme-challenge/ {
+        root /var/www/certbot;
+        try_files $uri =404;
+    }
+
+    # Tudo mais → HTTPS
+    location / {
+        return 301 https://$host$request_uri;
+    }
+}
+
+# ── HTTPS ────────────────────────────────────────────────────────────────────
+server {
+    listen 443 ssl;
+    http2 on;
+    server_name ${DOMAIN};
+
+    # Certificados gerados pelo Certbot
+    ssl_certificate     /etc/letsencrypt/live/${DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${DOMAIN}/privkey.pem;
+
+    # Boas praticas TLS (Mozilla Intermediate)
+    ssl_protocols             TLSv1.2 TLSv1.3;
+    ssl_ciphers               ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache         shared:SSL:10m;
+    ssl_session_timeout       1d;
+    ssl_session_tickets       off;
+    ssl_stapling              on;
+    ssl_stapling_verify       on;
+
+    # Headers de seguranca
+    add_header Strict-Transport-Security "max-age=63072000; includeSubDomains" always;
+    add_header X-Frame-Options           DENY                                  always;
+    add_header X-Content-Type-Options    nosniff                               always;
+    add_header Referrer-Policy           "strict-origin-when-cross-origin"     always;
+
+    # Proxy para a aplicacao Flask
+    location / {
+        proxy_pass         http://web:5000;
+        proxy_set_header   Host              $host;
+        proxy_set_header   X-Real-IP         $remote_addr;
+        proxy_set_header   X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header   X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60s;
+        proxy_connect_timeout 10s;
+        client_max_body_size 2M;
+    }
+
+    # Arquivos estaticos servidos diretamente pelo Nginx
+    location /static/ {
+        alias /app/app/static/;
+        expires 30d;
+        add_header Cache-Control "public, immutable";
+        access_log off;
+    }
+}

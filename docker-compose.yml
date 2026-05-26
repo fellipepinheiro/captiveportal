@@ -25,7 +25,6 @@ services:
   migrator:
     build: .
     container_name: unifi_portal_migrator
-    # Usa o script com retry em vez de chamar alembic diretamente
     command: ["/bin/sh", "/app/scripts/migrate.sh"]
     env_file: .env
     environment:
@@ -68,6 +67,8 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    environment:
+      - DOMAIN=${DOMAIN}
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
       - ./certbot/www:/var/www/certbot:ro
@@ -78,6 +79,30 @@ services:
     networks:
       - internal
 
+  # Emissao inicial do certificado (roda uma vez e sai)
+  certbot-init:
+    image: certbot/certbot:latest
+    container_name: unifi_portal_certbot_init
+    restart: "no"
+    command: >
+      certonly
+        --webroot
+        --webroot-path /var/www/certbot
+        --email ${CERTBOT_EMAIL}
+        --agree-tos
+        --no-eff-email
+        --keep-until-expiring
+        -d ${DOMAIN}
+    volumes:
+      - ./certbot/www:/var/www/certbot:rw
+      - ./certbot/conf:/etc/letsencrypt:rw
+    depends_on:
+      nginx:
+        condition: service_started
+    networks:
+      - internal
+
+  # Renovacao automatica (roda em loop a cada 12 h)
   certbot-renew:
     image: certbot/certbot:latest
     container_name: unifi_portal_certbot_renew
