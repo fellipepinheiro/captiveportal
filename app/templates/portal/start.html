@@ -19,7 +19,7 @@
 {% block content %}
 <form method="post" action="{{ url_for('portal.identify') }}" class="space-y-4"
       id="form-identify" novalidate autocomplete="on">
-  {{ csrf_input() }}
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
   <!-- E-mail -->
   <div>
