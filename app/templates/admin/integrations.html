@@ -1,18 +1,20 @@
-{% extends 'admin/base_admin.html' %}
+{% extends 'admin/base.html' %}
 {% block title %}Integrações{% endblock %}
 {% block content %}
 <div class="mb-6">
-  <h1 class="text-2xl font-bold text-white">Integrações & Webhook</h1>
-  <p class="text-white/50 text-sm mt-1">Configure o webhook pós-autorização para integrar com UniFi, OPNsense, n8n ou qualquer sistema externo.</p>
+  <h1 class="text-xl font-semibold">Integrações &amp; Webhook</h1>
+  <p class="text-slate-400 text-sm mt-1">Configure o webhook pós-autorização para integrar com UniFi, OPNsense, n8n ou qualquer sistema externo.</p>
 </div>
 
-<div class="bg-white/5 border border-white/10 rounded-xl p-6 max-w-2xl">
+<div class="bg-slate-900 border border-white/5 rounded-2xl p-6 max-w-2xl">
   <form method="post" action="{{ url_for('admin.integrations_save') }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
     <!-- Habilitado -->
     <div class="flex items-center justify-between mb-5">
       <div>
-        <p class="text-white font-medium">Webhook ativo</p>
-        <p class="text-white/50 text-xs">Quando habilitado, dispara um POST a cada autorização de visitante.</p>
+        <p class="text-slate-100 font-medium">Webhook ativo</p>
+        <p class="text-slate-400 text-xs">Quando habilitado, dispara um POST a cada autorização de visitante.</p>
       </div>
       <label class="relative inline-flex items-center cursor-pointer">
         <input type="checkbox" name="webhook_enabled" value="1" {% if webhook_enabled %}checked{% endif %} class="sr-only peer">
@@ -24,30 +26,29 @@
 
     <!-- URL -->
     <div class="mb-4">
-      <label class="block text-sm text-white/70 mb-1">URL do Webhook</label>
+      <label class="block text-xs text-slate-400 mb-1">URL do Webhook</label>
       <input type="url" name="webhook_url" value="{{ webhook_url }}" placeholder="https://n8n.empresa.com/webhook/captiveportal"
-        class="w-full rounded bg-white/10 border border-white/20 text-white px-3 py-2 text-sm placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-teal-400">
+        class="w-full rounded-xl bg-white/5 border border-white/10 text-slate-100 px-4 py-2.5 text-sm placeholder-slate-600 focus:outline-none focus:border-teal-500/50 transition">
     </div>
 
     <!-- Secret -->
     <div class="mb-6">
-      <label class="block text-sm text-white/70 mb-1">Segredo HMAC-SHA256</label>
+      <label class="block text-xs text-slate-400 mb-1">Segredo HMAC-SHA256</label>
       <input type="text" name="webhook_secret" value="{{ webhook_secret }}" placeholder="chave-secreta-aleatoria"
-        class="w-full rounded bg-white/10 border border-white/20 text-white px-3 py-2 text-sm placeholder-white/40 font-mono focus:outline-none focus:ring-2 focus:ring-teal-400">
-      <p class="text-white/40 text-xs mt-1">O header <code class="bg-white/10 px-1 rounded">X-Webhook-Signature: sha256=&lt;hex&gt;</code> é enviado em cada requisição.</p>
+        class="w-full rounded-xl bg-white/5 border border-white/10 text-slate-100 px-4 py-2.5 text-sm placeholder-slate-600 font-mono focus:outline-none focus:border-teal-500/50 transition">
+      <p class="text-slate-500 text-xs mt-1">O header <code class="bg-white/10 px-1 rounded">X-Webhook-Signature: sha256=&lt;hex&gt;</code> é enviado em cada requisição.</p>
     </div>
 
-    <div class="flex gap-3">
-      <button type="submit" class="px-5 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded text-sm font-medium">Salvar</button>
-    </div>
+    <button type="submit" class="rounded-xl bg-teal-600 hover:bg-teal-500 px-5 py-2.5 text-sm font-semibold text-white transition">Salvar</button>
   </form>
 
   <!-- Testar -->
-  <div class="border-t border-white/10 mt-6 pt-6">
-    <p class="text-white/70 text-sm mb-2">Teste a conectividade disparando um evento de teste agora:</p>
+  <div class="border-t border-white/5 mt-6 pt-6">
+    <p class="text-slate-400 text-sm mb-3">Teste a conectividade disparando um evento de teste agora:</p>
     <form method="post" action="{{ url_for('admin.integrations_test') }}">
-      <button type="submit" class="px-4 py-2 bg-indigo-700 hover:bg-indigo-600 text-white rounded text-sm">
-        🔁 Enviar webhook de teste
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="rounded-xl border border-indigo-500/30 bg-indigo-500/10 px-5 py-2 text-sm text-indigo-300 hover:bg-indigo-500/20 transition">
+        Enviar webhook de teste
       </button>
     </form>
   </div>
@@ -55,8 +56,8 @@
 
 <!-- Payload de exemplo -->
 <div class="mt-6 max-w-2xl">
-  <h2 class="text-white/70 text-sm uppercase mb-2">Payload enviado (exemplo)</h2>
-  <pre class="bg-black/40 border border-white/10 rounded-xl p-4 text-xs text-emerald-300 overflow-x-auto">{
+  <h2 class="text-xs text-slate-500 uppercase tracking-wider mb-3">Payload enviado (exemplo)</h2>
+  <pre class="bg-black/40 border border-white/5 rounded-2xl p-4 text-xs text-emerald-300 overflow-x-auto">{
   "event":         "guest_authorized",
   "session_id":    42,
   "visitor_id":    7,
