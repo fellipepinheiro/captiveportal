@@ -1,13 +1,15 @@
 import csv
 import io
+import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from flask import (
     Blueprint, render_template, request, redirect,
-    url_for, flash, Response, jsonify
+    url_for, flash, Response, jsonify, current_app
 )
 from flask_login import login_user, logout_user, login_required, current_user
+from werkzeug.utils import secure_filename
 
 from app.extensions import db, limiter
 from app.models import Visitor, PortalSession, AdminUser
@@ -15,23 +17,28 @@ from app.models.site_config import SiteConfig
 
 bp = Blueprint("admin", __name__)
 
-UPLOAD_FOLDER = Path("app/static/uploads")
-ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "svg", "webp"}
-MAX_LOGO_BYTES = 2 * 1024 * 1024  # 2 MB
+UPLOAD_FOLDER      = Path("app/static/uploads")
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}     # SVG removido — risco de XSS
+MAX_LOGO_BYTES     = 2 * 1024 * 1024                    # 2 MB
+HEX_COLOR_RE       = re.compile(r'^#[0-9A-Fa-f]{6}$')
 
 _DEFAULT_CFG = {
-    "portal_title": "Wi-Fi Visitantes",
-    "portal_welcome": "Identifique-se para acessar a internet.",
+    "portal_title":    "Wi-Fi Visitantes",
+    "portal_welcome":  "Identifique-se para acessar a internet.",
     "portal_btn_color": "#0f766e",
-    "portal_accent": "#14b8a6",
-    "portal_bg_from": "#0f172a",
-    "portal_bg_via": "#1e1b4b",
-    "portal_bg_to": "#0f172a",
+    "portal_accent":   "#14b8a6",
+    "portal_bg_from":  "#0f172a",
+    "portal_bg_via":   "#1e1b4b",
+    "portal_bg_to":    "#0f172a",
 }
 
 
 def _allowed(filename: str) -> bool:
     return "." in filename and filename.rsplit(".", 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def _valid_hex(value: str) -> bool:
+    return bool(HEX_COLOR_RE.match(value))
 
 
 def _load_cfg() -> dict:
@@ -44,7 +51,7 @@ def _load_cfg() -> dict:
     return cfg
 
 
-# ─── Auth ────────────────────────────────────────────────────────────────────────────
+# ─── Auth ────────────────────────────────────────────────────────────────────────
 
 @bp.get("/login")
 def login():
@@ -60,9 +67,9 @@ def login_post():
     password = request.form.get("password", "")
     user = AdminUser.query.filter_by(username=username, is_active=True).first()
     if user and user.check_password(password):
-        login_user(user)
+        login_user(user, remember=False)          # sem remember — sessão só até fechar o browser
         return redirect(url_for("admin.dashboard"))
-    flash("Credenciais invalidas.", "error")
+    flash("Credenciais inválidas.", "error")
     return redirect(url_for("admin.login"))
 
 
@@ -78,15 +85,14 @@ def logout():
 @bp.get("/")
 @login_required
 def dashboard():
-    total_visitors = Visitor.query.count()
-    total_sessions = PortalSession.query.count()
-    authorized_sessions = PortalSession.query.filter_by(authorized=True).count()
+    total_visitors       = Visitor.query.count()
+    total_sessions       = PortalSession.query.count()
+    authorized_sessions  = PortalSession.query.filter_by(authorized=True).count()
     auth_rate = round((authorized_sessions / total_sessions * 100) if total_sessions else 0, 1)
     recent = (
         PortalSession.query
         .order_by(PortalSession.created_at.desc())
-        .limit(20)
-        .all()
+        .limit(20).all()
     )
     return render_template(
         "admin/dashboard.html",
@@ -103,26 +109,33 @@ def dashboard():
 @bp.get("/visitantes")
 @login_required
 def visitors():
-    page = request.args.get("page", 1, type=int)
-    q = request.args.get("q", "").strip()
+    page         = request.args.get("page", 1, type=int)
+    q            = request.args.get("q", "").strip()
     show_blocked = request.args.get("blocked", "") == "1"
-    query = Visitor.query.order_by(Visitor.created_at.desc())
+    query        = Visitor.query.order_by(Visitor.created_at.desc())
     if q:
+        # Busca segura com ilike — sem interpolação direta na query
         query = query.filter(
-            (Visitor.full_name.ilike(f"%{q}%")) | (Visitor.email.ilike(f"%{q}%"))
+            (Visitor.full_name.ilike(f"%{q}%")) |
+            (Visitor.email.ilike(f"%{q}%"))
         )
     if show_blocked:
         query = query.filter(Visitor.is_blocked == True)
     pagination = query.paginate(page=page, per_page=25)
-    return render_template("admin/visitors.html", pagination=pagination, q=q, show_blocked=show_blocked)
+    return render_template(
+        "admin/visitors.html",
+        pagination=pagination,
+        q=q,
+        show_blocked=show_blocked,
+    )
 
 
 @bp.post("/visitantes/<int:vid>/bloquear")
 @login_required
 def visitor_block(vid: int):
     visitor = Visitor.query.get_or_404(vid)
-    reason = request.form.get("reason", "").strip() or "Bloqueado pelo administrador"
-    visitor.is_blocked = True
+    reason  = request.form.get("reason", "").strip()[:200] or "Bloqueado pelo administrador"
+    visitor.is_blocked   = True
     visitor.block_reason = reason
     db.session.commit()
     flash(f"Visitante '{visitor.full_name}' bloqueado.", "success")
@@ -133,7 +146,7 @@ def visitor_block(vid: int):
 @login_required
 def visitor_unblock(vid: int):
     visitor = Visitor.query.get_or_404(vid)
-    visitor.is_blocked = False
+    visitor.is_blocked   = False
     visitor.block_reason = None
     db.session.commit()
     flash(f"Visitante '{visitor.full_name}' desbloqueado.", "success")
@@ -145,8 +158,9 @@ def visitor_unblock(vid: int):
 def export_visitors():
     visitors_list = Visitor.query.order_by(Visitor.created_at.desc()).all()
     buf = io.StringIO()
-    w = csv.writer(buf)
-    w.writerow(["ID", "Nome", "E-mail", "Celular", "CPF", "Visitas", "Último acesso", "Bloqueado", "Cadastrado em"])
+    w   = csv.writer(buf)
+    w.writerow(["ID", "Nome", "E-mail", "Celular", "CPF",
+                "Visitas", "Último acesso", "Bloqueado", "Cadastrado em"])
     for v in visitors_list:
         w.writerow([
             v.id, v.full_name, v.email, v.mobile, v.cpf,
@@ -159,7 +173,10 @@ def export_visitors():
     return Response(
         buf.getvalue(),
         mimetype="text/csv",
-        headers={"Content-Disposition": "attachment; filename=visitantes.csv"},
+        headers={
+            "Content-Disposition": "attachment; filename=visitantes.csv",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 
@@ -176,15 +193,16 @@ def reports():
 def reports_data():
     from sqlalchemy import func, cast, Date, case as sa_case
 
-    days = min(int(request.args.get("days", 30)), 365)
+    # Valida e limita o parâmetro 'days' (1–365)
+    try:
+        days = max(1, min(int(request.args.get("days", 30)), 365))
+    except (ValueError, TypeError):
+        days = 30
+
     since = datetime.now(timezone.utc) - timedelta(days=days)
 
-    # SA 2.x: case(condition, value, else_=fallback)
     auth_expr = func.sum(
-        sa_case(
-            (PortalSession.authorized == True, 1),
-            else_=0,
-        )
+        sa_case((PortalSession.authorized == True, 1), else_=0)
     )
 
     sessions_by_day = (
@@ -227,16 +245,14 @@ def reports_data():
     device_rows = (
         db.session.query(PortalSession.device_type, func.count().label("n"))
         .filter(PortalSession.created_at >= since)
-        .group_by(PortalSession.device_type)
-        .all()
+        .group_by(PortalSession.device_type).all()
     )
     device_data = [{"name": r.device_type or "Desconhecido", "value": r.n} for r in device_rows]
 
     os_rows = (
         db.session.query(PortalSession.os_hint, func.count().label("n"))
         .filter(PortalSession.created_at >= since)
-        .group_by(PortalSession.os_hint)
-        .all()
+        .group_by(PortalSession.os_hint).all()
     )
     os_data = [{"name": r.os_hint or "Desconhecido", "value": r.n} for r in os_rows]
 
@@ -275,7 +291,12 @@ def integrations():
 @bp.post("/integracoes/salvar")
 @login_required
 def integrations_save():
-    SiteConfig.set("webhook_url",     request.form.get("webhook_url", "").strip())
+    webhook_url = request.form.get("webhook_url", "").strip()
+    # Aceita apenas URLs http/https (evita SSRF com outros esquemas)
+    if webhook_url and not re.match(r'^https?://', webhook_url):
+        flash("URL do webhook deve começar com http:// ou https://", "error")
+        return redirect(url_for("admin.integrations"))
+    SiteConfig.set("webhook_url",     webhook_url)
     SiteConfig.set("webhook_secret",  request.form.get("webhook_secret", "").strip())
     SiteConfig.set("webhook_enabled", "true" if request.form.get("webhook_enabled") else "false")
     db.session.commit()
@@ -285,18 +306,28 @@ def integrations_save():
 
 @bp.post("/integracoes/testar")
 @login_required
+@limiter.limit("5 per minute")
 def integrations_test():
-    import hashlib, hmac, json, urllib.request
+    import hashlib, hmac, json, urllib.request, urllib.parse
 
     url    = SiteConfig.get("webhook_url", "").strip()
     secret = SiteConfig.get("webhook_secret", "changeme")
+
     if not url:
         flash("Configure a URL do webhook primeiro.", "error")
         return redirect(url_for("admin.integrations"))
 
+    # SSRF guard — bloqueia IPs internos
+    parsed = urllib.parse.urlparse(url)
+    hostname = parsed.hostname or ""
+    _BLOCKED = ("localhost", "127.", "10.", "172.16.", "192.168.", "::1")
+    if any(hostname.startswith(b) for b in _BLOCKED):
+        flash("URL de destino não permitida (endereço interno).", "error")
+        return redirect(url_for("admin.integrations"))
+
     payload = {
-        "event": "webhook_test",
-        "message": "Teste de integração do Captive Portal",
+        "event":     "webhook_test",
+        "message":   "Teste de integração do Captive Portal",
         "timestamp": datetime.now(timezone.utc).isoformat(),
     }
     body = json.dumps(payload, default=str).encode()
@@ -325,7 +356,7 @@ def integrations_test():
 def settings_appearance():
     cfg = _load_cfg()
     logo_path = UPLOAD_FOLDER / "logo.png"
-    has_logo = logo_path.exists()
+    has_logo  = logo_path.exists()
     return render_template(
         "admin/settings_appearance.html",
         cfg=cfg,
@@ -336,21 +367,34 @@ def settings_appearance():
 @bp.post("/aparencia/salvar")
 @login_required
 def settings_appearance_save():
-    keys = ["portal_title", "portal_welcome", "portal_btn_color",
-            "portal_accent", "portal_bg_from", "portal_bg_via", "portal_bg_to"]
-    for key in keys:
-        val = request.form.get(key, "").strip()
+    color_keys = [
+        "portal_btn_color", "portal_accent",
+        "portal_bg_from", "portal_bg_via", "portal_bg_to",
+    ]
+    text_keys = ["portal_title", "portal_welcome"]
+
+    for key in text_keys:
+        val = request.form.get(key, "").strip()[:200]   # limita tamanho
         if val:
             SiteConfig.set(key, val)
+
+    for key in color_keys:
+        val = request.form.get(key, "").strip()
+        if val and _valid_hex(val):                      # valida formato hex
+            SiteConfig.set(key, val)
+        elif val:
+            flash(f"Cor inválida para {key}. Use formato #RRGGBB.", "error")
+            return redirect(url_for("admin.settings_appearance"))
+
     db.session.commit()
-    flash("Configuracoes salvas com sucesso.", "success")
+    flash("Configurações salvas com sucesso.", "success")
     return redirect(url_for("admin.settings_appearance"))
 
 
 @bp.post("/aparencia/logo-title")
 @login_required
 def settings_logo_title_save():
-    logo_title = request.form.get("logo_title", "").strip()
+    logo_title = request.form.get("logo_title", "").strip()[:100]
     SiteConfig.set("logo_title", logo_title)
     db.session.commit()
     flash("Título da logo salvo com sucesso.", "success")
@@ -364,13 +408,28 @@ def upload_logo():
     if not file or file.filename == "":
         flash("Nenhum arquivo selecionado.", "error")
         return redirect(url_for("admin.settings_appearance"))
-    if not _allowed(file.filename):
-        flash("Formato invalido. Use PNG, JPG, SVG ou WEBP.", "error")
+
+    filename = secure_filename(file.filename)           # sanitiza nome
+    if not _allowed(filename):
+        flash("Formato inválido. Use PNG, JPG ou WEBP.", "error")
         return redirect(url_for("admin.settings_appearance"))
+
     data = file.read()
     if len(data) > MAX_LOGO_BYTES:
-        flash("Arquivo muito grande. Maximo 2 MB.", "error")
+        flash("Arquivo muito grande. Máximo 2 MB.", "error")
         return redirect(url_for("admin.settings_appearance"))
+
+    # Verifica magic bytes para garantir que é realmente uma imagem
+    MAGIC = {
+        b'\x89PNG': 'png',
+        b'\xff\xd8\xff': 'jpg',
+        b'RIFF': 'webp',
+    }
+    is_image = any(data.startswith(magic) for magic in MAGIC)
+    if not is_image:
+        flash("Arquivo não reconhecido como imagem válida.", "error")
+        return redirect(url_for("admin.settings_appearance"))
+
     UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
     logo_path = UPLOAD_FOLDER / "logo.png"
     logo_path.write_bytes(data)
@@ -406,17 +465,20 @@ def users():
 def user_create():
     username = request.form.get("username", "").strip()
     password = request.form.get("password", "")
-    if not username or len(password) < 8:
-        flash("Username obrigatorio e senha deve ter ao menos 8 caracteres.", "error")
+    if not username or len(password) < 12:              # senha mínima elevada para 12
+        flash("Username obrigatório e senha deve ter ao menos 12 caracteres.", "error")
+        return redirect(url_for("admin.users"))
+    if not re.match(r'^[\w.-]{3,64}$', username):       # valida formato do username
+        flash("Username deve ter entre 3 e 64 caracteres alfanuméricos.", "error")
         return redirect(url_for("admin.users"))
     if AdminUser.query.filter_by(username=username).first():
-        flash(f"Username '{username}' ja existe.", "error")
+        flash(f"Username '{username}' já existe.", "error")
         return redirect(url_for("admin.users"))
     user = AdminUser(username=username)
     user.set_password(password)
     db.session.add(user)
     db.session.commit()
-    flash(f"Usuario '{username}' criado com sucesso.", "success")
+    flash(f"Usuário '{username}' criado com sucesso.", "success")
     return redirect(url_for("admin.users"))
 
 
@@ -425,22 +487,22 @@ def user_create():
 def user_toggle(uid: int):
     user = AdminUser.query.get_or_404(uid)
     if user.id == current_user.id:
-        flash("Voce nao pode desativar sua propria conta.", "error")
+        flash("Você não pode desativar sua própria conta.", "error")
         return redirect(url_for("admin.users"))
     user.is_active = not user.is_active
     db.session.commit()
     status = "ativado" if user.is_active else "desativado"
-    flash(f"Usuario '{user.username}' {status}.", "success")
+    flash(f"Usuário '{user.username}' {status}.", "success")
     return redirect(url_for("admin.users"))
 
 
 @bp.post("/usuarios/<int:uid>/senha")
 @login_required
 def user_password(uid: int):
-    user = AdminUser.query.get_or_404(uid)
+    user         = AdminUser.query.get_or_404(uid)
     new_password = request.form.get("new_password", "")
-    if len(new_password) < 8:
-        flash("A senha deve ter ao menos 8 caracteres.", "error")
+    if len(new_password) < 12:                          # consistente com user_create
+        flash("A senha deve ter ao menos 12 caracteres.", "error")
         return redirect(url_for("admin.users"))
     user.set_password(new_password)
     db.session.commit()
@@ -453,9 +515,9 @@ def user_password(uid: int):
 def user_delete(uid: int):
     user = AdminUser.query.get_or_404(uid)
     if user.id == current_user.id:
-        flash("Voce nao pode excluir sua propria conta.", "error")
+        flash("Você não pode excluir sua própria conta.", "error")
         return redirect(url_for("admin.users"))
     db.session.delete(user)
     db.session.commit()
-    flash(f"Usuario '{user.username}' excluido.", "success")
+    flash(f"Usuário '{user.username}' excluído.", "success")
     return redirect(url_for("admin.users"))
