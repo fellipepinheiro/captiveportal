@@ -29,6 +29,15 @@ def entry():
     ssid        = request.args.get("ssid", "WiFi")
     redirect_url= request.args.get("url", "http://google.com")
 
+    # Sem MAC: acesso direto (teste ou redirect sem parâmetros)
+    # Não cria sessão no banco — apenas renderiza a página de entrada
+    if not client_mac:
+        return render_template(
+            "portal/start.html",
+            ssid=ssid,
+            privacy_url=current_app.config.get("PRIVACY_POLICY_URL", "#"),
+        )
+
     portal_session = create_pending_session(client_mac, ap_mac, ssid, redirect_url)
     session[PORTAL_SESSION_KEY] = portal_session.id
 
