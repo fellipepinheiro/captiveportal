@@ -10,44 +10,52 @@
     body { font-family: 'Inter', 'Segoe UI', sans-serif; }
     ::-webkit-scrollbar { width: 5px; height: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
-    .nav-active { background-color: color-mix(in srgb, var(--accent) 12%, transparent) !important; color: var(--accent) !important; font-weight: 500; }
-    .nav-link:hover { background-color: color-mix(in srgb, var(--accent) 7%, transparent); color: #111827; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 9999px; }
+    .nav-active {
+      background-color: color-mix(in srgb, var(--accent) 18%, transparent) !important;
+      color: var(--accent) !important;
+      font-weight: 500;
+    }
+    .nav-link:hover {
+      background-color: rgba(255,255,255,0.05);
+      color: #f1f5f9;
+    }
     .brand-title { color: var(--accent); }
-    .btn-accent { background-color: var(--btn-color); }
-    .btn-accent:hover { filter: brightness(1.1); }
+    .btn-accent { background-color: var(--btn-color) !important; color: #fff !important; }
+    .btn-accent:hover { filter: brightness(1.15); }
+    .accent-text { color: var(--accent); }
+    .accent-border { border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+    .accent-bg { background-color: color-mix(in srgb, var(--accent) 12%, transparent); }
   </style>
 </head>
-<body class="min-h-full bg-gray-50 flex"
+<body class="min-h-full bg-slate-950 text-slate-200 flex"
       style="--accent: {{ portal_accent }}; --btn-color: {{ portal_btn_color }};">
 
   <!-- Sidebar -->
-  <aside class="w-56 min-h-screen bg-white border-r border-gray-100 flex flex-col shrink-0">
-    <div class="px-5 py-5 border-b border-gray-100">
+  <aside class="w-56 min-h-screen bg-slate-900 border-r border-white/5 flex flex-col shrink-0">
+    <div class="px-5 py-5 border-b border-white/5">
       {% if custom_logo_url %}
         <img src="{{ custom_logo_url }}" alt="Logo" class="h-8 object-contain mb-1" loading="lazy">
       {% else %}
         <span class="brand-title font-bold text-lg">{{ portal_title }}</span>
       {% endif %}
-      <span class="block text-xs text-gray-400 mt-0.5">Administra&ccedil;&atilde;o</span>
+      <span class="block text-xs text-slate-500 mt-0.5">Administra&ccedil;&atilde;o</span>
     </div>
 
     <nav class="flex-1 px-3 py-4 space-y-0.5">
-
       {% set nav_items = [
         ('admin.dashboard',           'Dashboard',    'M3 3h7v7H3zm0 11h7v7H3zm11-11h7v7h-7zm0 11h7v7h-7z'),
-        ('admin.visitors',            'Visitantes',   'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2 M23 21v-2a4 4 0 00-3-3.87 M16 3.13a4 4 0 010 7.75 M9 3a4 4 0 100 8 4 4 0 000-8z'),
-        ('admin.reports',             'Relatórios',   'M18 20V10 M12 20V4 M6 20v-6'),
-        ('admin.settings_appearance', 'Aparência',   'M12 20h9 M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z'),
-        ('admin.integrations',        'Integrações', 'M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71 M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71'),
-        ('admin.users',               'Usuários',    'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'),
+        ('admin.visitors',            'Visitantes',   'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75M9 3a4 4 0 100 8 4 4 0 000-8z'),
+        ('admin.reports',             'Relatórios',   'M18 20V10M12 20V4M6 20v-6'),
+        ('admin.settings_appearance', 'Aparência',    'M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z'),
+        ('admin.integrations',        'Integrações',  'M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71'),
+        ('admin.users',               'Usuários',     'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'),
       ] %}
-
       {% for endpoint, label, icon in nav_items %}
         {% set is_active = request.endpoint == endpoint or
            (endpoint == 'admin.visitors' and request.endpoint in ('admin.visitor_block','admin.visitor_unblock','admin.visitor_detail')) %}
         <a href="{{ url_for(endpoint) }}"
-           class="nav-link flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-gray-600 transition-colors
+           class="nav-link flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-slate-400 transition-colors
                   {{ 'nav-active' if is_active else '' }}">
           <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="{{ icon }}"/>
@@ -55,20 +63,19 @@
           {{ label }}
         </a>
       {% endfor %}
-
     </nav>
 
-    <div class="px-3 py-4 border-t border-gray-100 space-y-0.5">
+    <div class="px-3 py-4 border-t border-white/5 space-y-0.5">
       <a href="/guest/s/default/?id=aa:bb:cc:00:00:01&ap=00:00:00:00:00:01&ssid=Preview"
          target="_blank"
-         class="nav-link flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-500 transition-colors">
+         class="nav-link flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-slate-500 transition-colors">
         <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
         </svg>
         Preview do portal
       </a>
       <a href="{{ url_for('admin.logout') }}"
-         class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-gray-500 hover:bg-red-50 hover:text-red-600 transition-colors">
+         class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-slate-500 hover:bg-red-500/10 hover:text-red-400 transition-colors">
         <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
         </svg>
@@ -84,8 +91,8 @@
         <div class="mb-4 space-y-2">
           {% for category, message in messages %}
             <div class="rounded-xl px-4 py-3 text-sm
-              {% if category == 'error' %}bg-red-50 border border-red-200 text-red-800
-              {% else %}bg-green-50 border border-green-200 text-green-800{% endif %}">
+              {% if category == 'error' %}bg-red-500/10 border border-red-500/20 text-red-400
+              {% else %}bg-emerald-500/10 border border-emerald-500/20 text-emerald-400{% endif %}">
               {{ message }}
             </div>
           {% endfor %}
