@@ -11,11 +11,11 @@ class Visitor(db.Model):
     mobile      = db.Column(db.String(20),  unique=True, index=True)
     cpf         = db.Column(db.String(14),  unique=True, index=True)
     is_active   = db.Column(db.Boolean, default=True)
-    is_blocked  = db.Column(db.Boolean, default=False, index=True)  # banimento
+    is_blocked  = db.Column(db.Boolean, default=False, index=True)
     block_reason= db.Column(db.String(200))
 
     # Estatísticas
-    visit_count = db.Column(db.Integer, default=0)   # quantas vezes se conectou
+    visit_count = db.Column(db.Integer, default=0)
     last_seen   = db.Column(db.DateTime(timezone=True))
 
     # Datas
@@ -27,6 +27,15 @@ class Visitor(db.Model):
     terms_accepted_at   = db.Column(db.DateTime(timezone=True))
     terms_version       = db.Column(db.String(10))
     marketing_optin     = db.Column(db.Boolean, default=False)
+
+    # Relationships
+    consent_events = db.relationship(
+        "ConsentEvent",
+        back_populates="visitor",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
+        order_by="ConsentEvent.created_at.desc()",
+    )
 
     @classmethod
     def create(cls, full_name, email, mobile, cpf,
