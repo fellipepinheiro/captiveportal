@@ -7,20 +7,20 @@ from pathlib import Path
 
 from flask import (
     Blueprint, render_template, request, redirect,
-    url_for, flash, Response, jsonify, current_app
+    url_for, flash, Response, jsonify, current_app, send_from_directory
 )
 from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.utils import secure_filename
 
-from app.extensions import db, limiter
+from app.extensions import db, limiter, csrf
 from app.models import Visitor, PortalSession, AdminUser
 from app.models.site_config import SiteConfig
 
 bp = Blueprint("admin", __name__)
 
 UPLOAD_FOLDER      = Path("app/static/uploads")
-ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}     # SVG removido — risco de XSS
-MAX_LOGO_BYTES     = 2 * 1024 * 1024                    # 2 MB
+ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
+MAX_LOGO_BYTES     = 2 * 1024 * 1024
 HEX_COLOR_RE       = re.compile(r'^#[0-9A-Fa-f]{6}$')
 
 _DEFAULT_CFG = {
@@ -52,7 +52,19 @@ def _load_cfg() -> dict:
     return cfg
 
 
-# ─── Auth ────────────────────────────────────────────────────────────────────────────────
+# ─── Media (logo pública) ────────────────────────────────────────────────────
+# Serve o logo via /media/logo.png — roteado pelo nginx-proxy junto com /guest/
+# Evita o problema de /static/ não ser roteado pelo proxy reverso.
+
+@bp.get("/media/<path:filename>")
+@csrf.exempt
+def serve_media(filename):
+    """Serve arquivos de upload publicamente via /admin/media/<filename>."""
+    safe = secure_filename(filename)
+    return send_from_directory(UPLOAD_FOLDER.resolve(), safe)
+
+
+# ─── Auth ────────────────────────────────────────────────────────────────────
 
 @bp.get("/login")
 def login():
@@ -81,7 +93,7 @@ def logout():
     return redirect(url_for("admin.login"))
 
 
-# ─── Dashboard ─────────────────────────────────────────────────────────────────────────────────
+# ─── Dashboard ───────────────────────────────────────────────────────────────
 
 @bp.get("/")
 @login_required
@@ -105,7 +117,7 @@ def dashboard():
     )
 
 
-# ─── Visitors ───────────────────────────────────────────────────────────────────────────────
+# ─── Visitors ────────────────────────────────────────────────────────────────
 
 @bp.get("/visitantes")
 @login_required
@@ -180,7 +192,7 @@ def export_visitors():
     )
 
 
-# ─── Reports ────────────────────────────────────────────────────────────────────────────────
+# ─── Reports ─────────────────────────────────────────────────────────────────
 
 @bp.get("/relatorios")
 @login_required
@@ -271,7 +283,7 @@ def reports_data():
     })
 
 
-# ─── Integrations ───────────────────────────────────────────────────────────────────────────
+# ─── Integrations ────────────────────────────────────────────────────────────
 
 @bp.get("/integracoes")
 @login_required
@@ -318,7 +330,6 @@ def integrations_test():
         flash("Configure a URL do webhook primeiro.", "error")
         return redirect(url_for("admin.integrations"))
 
-    # SSRF guard — desabilitável via ALLOW_PRIVATE_WEBHOOK=true para ambientes on-premise
     allow_private = os.environ.get("ALLOW_PRIVATE_WEBHOOK", "false").lower() == "true"
     if not allow_private:
         parsed   = urllib.parse.urlparse(url)
@@ -329,7 +340,6 @@ def integrations_test():
                   "Defina ALLOW_PRIVATE_WEBHOOK=true no .env para ambientes on-premise.", "error")
             return redirect(url_for("admin.integrations"))
 
-    # Respeita UNIFI_VERIFY_SSL=false para certificados self-signed (ambientes on-premise)
     verify_ssl = os.environ.get("UNIFI_VERIFY_SSL", "true").lower() != "false"
 
     payload = {
@@ -360,7 +370,7 @@ def integrations_test():
     return redirect(url_for("admin.integrations"))
 
 
-# ─── Appearance ──────────────────────────────────────────────────────────────────────────────
+# ─── Appearance ──────────────────────────────────────────────────────────────
 
 @bp.get("/aparencia")
 @login_required
@@ -443,7 +453,8 @@ def upload_logo():
     UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
     logo_path = UPLOAD_FOLDER / "logo.png"
     logo_path.write_bytes(data)
-    SiteConfig.set("custom_logo_url", "/static/uploads/logo.png")
+    # Usa a rota /admin/media/ que é roteada pelo nginx-proxy
+    SiteConfig.set("custom_logo_url", "/admin/media/logo.png")
     db.session.commit()
     flash("Logo atualizada com sucesso.", "success")
     return redirect(url_for("admin.settings_appearance"))
@@ -461,7 +472,7 @@ def remove_logo():
     return redirect(url_for("admin.settings_appearance"))
 
 
-# ─── Admin Users ───────────────────────────────────────────────────────────────────────────────
+# ─── Admin Users ─────────────────────────────────────────────────────────────
 
 @bp.get("/usuarios")
 @login_required
