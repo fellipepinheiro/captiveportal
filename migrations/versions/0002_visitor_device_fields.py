@@ -1,14 +1,14 @@
 """Adiciona colunas de device/stats em visitors e portal_sessions
 
-Revision ID: 0002
-Down revision: 0001
+Revision ID: 0002v
+Revises: 0002
 Create Date: 2026-05-25
 """
 from alembic import op
 import sqlalchemy as sa
 
-revision = '0002'
-down_revision = '0001'
+revision = '0002v'
+down_revision = '0002'
 branch_labels = None
 depends_on = None
 
@@ -16,7 +16,6 @@ depends_on = None
 def upgrade():
     # ── visitors ──────────────────────────────────────────────────────────────
     with op.batch_alter_table('visitors') as batch_op:
-        # já podem existir (adicionadas manualmente); usa try/except por segurança
         try:
             batch_op.add_column(sa.Column('visit_count', sa.Integer(), nullable=True, server_default='0'))
         except Exception:

@@ -1,7 +1,7 @@
 """LGPD e logs — consent_events, data_subject_requests e novos campos
 
 Revision ID: 0003
-Revises: 0002
+Revises: 0002v
 Create Date: 2026-05-25
 
 Alterações:
@@ -16,7 +16,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = '0003'
-down_revision = '0002'
+down_revision = '0002v'
 branch_labels = None
 depends_on = None
 
