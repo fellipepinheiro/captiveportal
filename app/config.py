@@ -3,42 +3,45 @@ from decouple import config as env
 
 
 class BaseConfig:
-    # ── Segurança básica ──────────────────────────────────────────────────
+    # ── Segurança básica ─────────────────────────────────────────────────
     SECRET_KEY = env("SECRET_KEY")                        # obrigatório — sem default inseguro
     WTF_CSRF_ENABLED     = True
     WTF_CSRF_TIME_LIMIT  = 3600                           # token CSRF expira em 1 h
     WTF_CSRF_SSL_STRICT  = False                          # relaxado para proxy reverso
 
-    # ── Session ──────────────────────────────────────────────────────────
+    # ── Session ────────────────────────────────────────────────────
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
+    # Desativado em base: o portal captive é acessado via HTTP (IP interno)
+    # antes do redirect HTTPS. Secure=True bloquearia o cookie nesse cenário.
+    SESSION_COOKIE_SECURE   = False
     PERMANENT_SESSION_LIFETIME = 3600                     # sessão expira em 1 h
 
-    # ── SQLAlchemy ────────────────────────────────────────────────────────
+    # ── SQLAlchemy ────────────────────────────────────────────────
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {
         "pool_pre_ping": True,
         "pool_recycle": 300,
     }
 
-    # ── Rate limiting ─────────────────────────────────────────────────────
+    # ── Rate limiting ──────────────────────────────────────────────
     RATELIMIT_STORAGE_URI   = env("REDIS_URL", default="memory://")
     RATELIMIT_DEFAULT        = "200 per day;50 per hour"
     RATELIMIT_HEADERS_ENABLED = True
 
-    # ── UniFi ─────────────────────────────────────────────────────────────
+    # ── UniFi ─────────────────────────────────────────────────────
     UNIFI_BASE_URL        = env("UNIFI_BASE_URL", default="https://192.168.1.1")
     UNIFI_API_KEY         = env("UNIFI_API_KEY", default="")
     UNIFI_SITE_ID         = env("UNIFI_SITE_ID", default="default")
     UNIFI_SESSION_MINUTES = env("UNIFI_SESSION_MINUTES", default=480, cast=int)
     UNIFI_VERIFY_SSL      = env("UNIFI_VERIFY_SSL", default=False, cast=bool)
 
-    # ── LGPD / Portal ─────────────────────────────────────────────────────
+    # ── LGPD / Portal ───────────────────────────────────────────────
     FERNET_KEY          = env("FERNET_KEY", default="")
     TERMS_VERSION       = env("TERMS_VERSION", default="1.0")
     PRIVACY_POLICY_URL  = env("PRIVACY_POLICY_URL", default="/politica-de-privacidade")
 
-    # ── Upload ─────────────────────────────────────────────────────────────
+    # ── Upload ─────────────────────────────────────────────────────
     MAX_CONTENT_LENGTH = 2 * 1024 * 1024                  # 2 MB — bloqueia uploads gigantes
 
 
@@ -53,8 +56,11 @@ class DevelopmentConfig(BaseConfig):
 class ProductionConfig(BaseConfig):
     DEBUG = False
     SQLALCHEMY_DATABASE_URI = env("DATABASE_URL")
-    SESSION_COOKIE_SECURE   = True                        # obriga HTTPS
-    SESSION_COOKIE_SAMESITE = "Strict"                    # mais restritivo em produção
+    # SESSION_COOKIE_SECURE permanece False (herdado de BaseConfig):
+    # o portal captive é acessado via HTTP puro pelo IP interno (redirect do UniFi).
+    # O domínio guests.bntc.com.br usa HTTPS, mas o redirect inicial é HTTP.
+    # Manter Secure=True bloquearia o cookie de sessão e quebraria o CSRF.
+    SESSION_COOKIE_SAMESITE = "Lax"
 
 
 class TestingConfig(BaseConfig):
