@@ -31,7 +31,7 @@
   <div class="flex items-center justify-between px-5 py-4 border-b border-white/5">
     <h2 class="text-sm font-medium">Atividade recente</h2>
     <a href="{{ url_for('admin.visitors') }}"
-       class="text-xs text-teal-400 hover:text-teal-300 transition">Ver todos →</a>
+       class="text-xs accent-text hover:opacity-80 transition">Ver todos →</a>
   </div>
   <div class="overflow-x-auto">
     <table class="w-full text-sm">
@@ -41,6 +41,7 @@
           <th class="text-left px-5 py-3 font-medium hidden md:table-cell">SSID</th>
           <th class="text-left px-5 py-3 font-medium hidden lg:table-cell">Dispositivo</th>
           <th class="text-left px-5 py-3 font-medium hidden lg:table-cell">IP</th>
+          <th class="text-left px-5 py-3 font-medium hidden xl:table-cell">MAC</th>
           <th class="text-left px-5 py-3 font-medium">Status</th>
           <th class="text-left px-5 py-3 font-medium">Hora</th>
         </tr>
@@ -72,6 +73,9 @@
           <td class="px-5 py-3 hidden lg:table-cell">
             <span class="text-xs text-slate-500 font-mono">{{ s.client_ip or '—' }}</span>
           </td>
+          <td class="px-5 py-3 hidden xl:table-cell">
+            <span class="text-xs text-slate-400 font-mono tracking-wide">{{ s.client_mac or '—' }}</span>
+          </td>
           <td class="px-5 py-3">
             {% if s.authorized %}
             <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium
@@ -87,7 +91,7 @@
         </tr>
         {% else %}
         <tr>
-          <td colspan="6" class="px-5 py-10 text-center text-sm text-slate-600">
+          <td colspan="7" class="px-5 py-10 text-center text-sm text-slate-600">
             Nenhuma sessão registrada ainda.
           </td>
         </tr>
