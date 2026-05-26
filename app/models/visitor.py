@@ -28,7 +28,11 @@ class Visitor(db.Model):
     terms_version       = db.Column(db.String(10))
     marketing_optin     = db.Column(db.Boolean, default=False)
 
-    # Relationships
+    # ------------------------------------------------------------------ #
+    # Relationships — cada back_populates precisa existir nos dois lados  #
+    # ------------------------------------------------------------------ #
+
+    # Histórico de consentimento (ConsentEvent.visitor -> back_populates="consent_events")
     consent_events = db.relationship(
         "ConsentEvent",
         back_populates="visitor",
@@ -36,6 +40,17 @@ class Visitor(db.Model):
         lazy="dynamic",
         order_by="ConsentEvent.created_at.desc()",
     )
+
+    # Solicitações LGPD Art.18 (DataSubjectRequest.visitor -> back_populates="data_requests")
+    data_requests = db.relationship(
+        "DataSubjectRequest",
+        back_populates="visitor",
+        cascade="save-update, merge",
+        lazy="dynamic",
+        order_by="DataSubjectRequest.requested_at.desc()",
+    )
+
+    # ------------------------------------------------------------------ #
 
     @classmethod
     def create(cls, full_name, email, mobile, cpf,
