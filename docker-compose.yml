@@ -6,11 +6,12 @@ services:
     restart: unless-stopped
     ports:
       - "3306:3306"
+    command: --require_secure_transport=OFF
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootsecret}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-unifi_portal}
-      MYSQL_USER: ${MYSQL_USER:-portal}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-portalsecret}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
     volumes:
       - db_data:/var/lib/mysql
     healthcheck:
