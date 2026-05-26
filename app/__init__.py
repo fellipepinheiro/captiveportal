@@ -16,6 +16,10 @@ def create_app(config_name=None):
     limiter.init_app(app)
     login_manager.init_app(app)
 
+    # Headers de seguranca HTTP (CSP, HSTS, X-Frame-Options, etc.)
+    from app.security import register_security_headers
+    register_security_headers(app)
+
     # Registra blueprints
     from app.routes.portal import bp as portal_bp
     from app.routes.admin import bp as admin_bp
