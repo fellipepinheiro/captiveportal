@@ -1,11 +1,11 @@
 """add missing columns to visitors and portal_sessions
 
 Revision ID: 20260526_0004
-Revises: 20260525_0001
+Revises: 0003
 Create Date: 2026-05-26 08:00:00
 
-Adds columns that exist in the SQLAlchemy models but were not created
-by the initial migration (20260525_0001):
+Adds columns that exist in the SQLAlchemy models but were absent from
+the DB after running migrations 0001→0003:
 
   visitors:
     - is_blocked        (BOOLEAN, NOT NULL, default False)
@@ -20,7 +20,7 @@ by the initial migration (20260525_0001):
     - client_ip         (VARCHAR 45, nullable)
     - device_type       (VARCHAR 50, nullable)
     - os_hint           (VARCHAR 50, nullable)
-    - expired_at        (DATETIME, nullable)   <- model field name
+    - expired_at        (DATETIME, nullable)
     - duration_minutes  (INTEGER, NOT NULL, default 0)
     - bytes_up          (BIGINT, NOT NULL, default 0)
     - bytes_down        (BIGINT, NOT NULL, default 0)
@@ -29,7 +29,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = '20260526_0004'
-down_revision = '20260525_0001'
+down_revision = '0003'
 branch_labels = None
 depends_on = None
 
