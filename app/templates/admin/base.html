@@ -11,74 +11,85 @@
     ::-webkit-scrollbar { width: 5px; height: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #334155; border-radius: 9999px; }
+
     .nav-active {
       background-color: color-mix(in srgb, var(--accent) 18%, transparent) !important;
       color: var(--accent) !important;
       font-weight: 500;
     }
     .nav-link:hover { background-color: rgba(255,255,255,0.05); color: #f1f5f9; }
-    .brand-title { color: var(--accent); }
     .btn-accent { background-color: var(--btn-color) !important; color: #fff !important; }
     .btn-accent:hover { filter: brightness(1.15); }
-    .accent-text { color: var(--accent); }
-    .accent-border { border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
-    .accent-bg { background-color: color-mix(in srgb, var(--accent) 12%, transparent); }
+    .accent-text  { color: var(--accent); }
+    .accent-border{ border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+    .accent-bg    { background-color: color-mix(in srgb, var(--accent) 12%, transparent); }
 
-    /* Sidebar drawer mobile */
-    #sidebar {
-      transition: transform 0.25s cubic-bezier(0.16,1,0.3,1);
-    }
-    #sidebar.open  { transform: translateX(0); }
-    #sidebar.closed { transform: translateX(-100%); }
-    #overlay {
-      transition: opacity 0.25s ease;
-    }
-    #overlay.hidden { opacity: 0; pointer-events: none; }
+    /* ── Sidebar transitions ── */
+    #sidebar { transition: width 0.22s cubic-bezier(0.16,1,0.3,1), transform 0.25s cubic-bezier(0.16,1,0.3,1); }
+    #sidebar .nav-label,
+    #sidebar .sidebar-brand-text,
+    #sidebar .sidebar-footer-text { transition: opacity 0.15s ease, width 0.15s ease; }
+
+    /* Desktop collapsed */
+    body.sidebar-collapsed #sidebar        { width: 3.5rem; }
+    body.sidebar-collapsed #sidebar .nav-label,
+    body.sidebar-collapsed #sidebar .sidebar-brand-text,
+    body.sidebar-collapsed #sidebar .sidebar-footer-text { opacity: 0; width: 0; overflow: hidden; white-space: nowrap; }
+    body.sidebar-collapsed #sidebar .nav-link  { justify-content: center; padding-left: 0; padding-right: 0; }
+    body.sidebar-collapsed #sidebar .sidebar-logo-wrap { justify-content: center; }
+    body.sidebar-collapsed #sidebar .collapse-btn-icon { transform: rotate(180deg); }
+
+    /* Mobile overlay drawer */
+    #overlay { transition: opacity 0.25s ease; }
+    #overlay.hidden  { opacity: 0; pointer-events: none; }
     #overlay.visible { opacity: 1; pointer-events: auto; }
 
-    /* Desktop: sidebar always visible */
-    @media (min-width: 768px) {
-      #sidebar { transform: translateX(0) !important; position: relative !important;
-                 height: 100vh; top: 0 !important; }
-      #overlay { display: none !important; }
-      #mobile-header { display: none !important; }
-      body { display: flex; }
-    }
-
-    /* Mobile: sidebar is a fixed drawer */
     @media (max-width: 767px) {
       #sidebar {
-        position: fixed;
-        top: 0; left: 0;
-        height: 100dvh;
-        z-index: 50;
-        width: 240px;
+        position: fixed; top: 0; left: 0;
+        height: 100dvh; z-index: 50;
+        width: 240px !important;   /* always full width as drawer */
+        transform: translateX(-100%);
       }
-      #sidebar.closed { transform: translateX(-100%); }
-      body { display: block; }
-      #main-content { padding-top: 56px; }
+      #sidebar.mobile-open { transform: translateX(0); }
+      #mobile-header { display: flex !important; }
+      #collapse-btn  { display: none !important; }
+      body.sidebar-collapsed #sidebar .nav-label,
+      body.sidebar-collapsed #sidebar .sidebar-brand-text,
+      body.sidebar-collapsed #sidebar .sidebar-footer-text {
+        opacity: 1; width: auto; overflow: visible;
+      }
+      body.sidebar-collapsed #sidebar .nav-link  { justify-content: flex-start; padding-left: 0.75rem; padding-right: 0.75rem; }
+      #main-wrap { padding-top: 56px; }
+    }
+
+    @media (min-width: 768px) {
+      #mobile-header { display: none !important; }
+      #overlay       { display: none !important; }
+      body           { display: flex; }
+      #sidebar       { position: relative; height: 100vh; transform: none !important; }
     }
   </style>
 </head>
 <body class="min-h-full bg-slate-950 text-slate-200"
       style="--accent: {{ portal_accent }}; --btn-color: {{ portal_btn_color }};">
 
-  <!-- Mobile top bar -->
+  <!-- ── Mobile top bar ── -->
   <header id="mobile-header"
-          class="fixed top-0 left-0 right-0 z-40 flex items-center justify-between
+          class="fixed top-0 inset-x-0 z-40 hidden items-center justify-between
                  bg-slate-900 border-b border-white/5 px-4 h-14">
-    <button id="menu-btn" aria-label="Abrir menu"
+    <button id="menu-btn" aria-label="Menu"
             class="flex items-center justify-center w-9 h-9 rounded-lg text-slate-400
                    hover:bg-white/5 hover:text-slate-100 transition-colors">
-      <svg id="icon-menu" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <svg id="icon-ham" class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
       </svg>
-      <svg id="icon-close" class="w-5 h-5 hidden" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <svg id="icon-x" class="w-5 h-5 hidden" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
         <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
       </svg>
     </button>
 
-    <span class="text-sm font-semibold" style="color: var(--accent)">
+    <span class="text-sm font-semibold" style="color:var(--accent)">
       {% if custom_logo_url %}
         <img src="{{ custom_logo_url }}" alt="Logo" class="h-7 object-contain" loading="lazy">
       {% else %}
@@ -90,32 +101,47 @@
        class="flex items-center justify-center w-9 h-9 rounded-lg text-slate-500
               hover:bg-red-500/10 hover:text-red-400 transition-colors" aria-label="Sair">
       <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-        <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+        <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
+        <polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
       </svg>
     </a>
   </header>
 
-  <!-- Overlay (mobile) -->
-  <div id="overlay"
-       class="fixed inset-0 z-40 bg-black/60 hidden"
-       style="backdrop-filter: blur(2px);"
-       onclick="closeSidebar()"></div>
+  <!-- ── Mobile overlay ── -->
+  <div id="overlay" class="fixed inset-0 z-40 bg-black/60 hidden"
+       style="backdrop-filter:blur(2px)" onclick="closeSidebar()"></div>
 
-  <!-- Sidebar -->
+  <!-- ── Sidebar ── -->
   <aside id="sidebar"
-         class="closed w-60 bg-slate-900 border-r border-white/5 flex flex-col shrink-0">
+         class="w-56 min-h-screen bg-slate-900 border-r border-white/5 flex flex-col shrink-0">
 
-    <!-- Logo desktop -->
-    <div class="px-5 py-5 border-b border-white/5">
-      {% if custom_logo_url %}
-        <img src="{{ custom_logo_url }}" alt="Logo" class="h-8 object-contain mb-1" loading="lazy">
-      {% else %}
-        <span class="brand-title font-bold text-lg">{{ portal_title }}</span>
-      {% endif %}
-      <span class="block text-xs text-slate-500 mt-0.5">Administra&ccedil;&atilde;o</span>
+    <!-- Brand -->
+    <div class="sidebar-logo-wrap flex items-center justify-between px-4 py-4 border-b border-white/5">
+      <div class="flex items-center gap-2 min-w-0">
+        {% if custom_logo_url %}
+          <img src="{{ custom_logo_url }}" alt="Logo" class="h-7 shrink-0 object-contain" loading="lazy">
+        {% endif %}
+        <div class="sidebar-brand-text min-w-0">
+          {% if not custom_logo_url %}
+            <span class="block font-bold text-base truncate" style="color:var(--accent)">{{ portal_title }}</span>
+          {% endif %}
+          <span class="block text-xs text-slate-500">Administra&ccedil;&atilde;o</span>
+        </div>
+      </div>
+      <!-- Desktop collapse button -->
+      <button id="collapse-btn" onclick="toggleCollapse()"
+              aria-label="Recolher menu"
+              class="flex items-center justify-center w-7 h-7 rounded-lg text-slate-500
+                     hover:bg-white/5 hover:text-slate-300 transition-colors shrink-0">
+        <svg class="collapse-btn-icon w-4 h-4 transition-transform duration-200"
+             fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M11 19l-7-7 7-7M18 19l-7-7 7-7"/>
+        </svg>
+      </button>
     </div>
 
-    <nav class="flex-1 px-3 py-4 space-y-0.5 overflow-y-auto">
+    <!-- Nav -->
+    <nav class="flex-1 px-2 py-3 space-y-0.5 overflow-y-auto">
       {% set nav_items = [
         ('admin.dashboard',           'Dashboard',    'M3 3h7v7H3zm0 11h7v7H3zm11-11h7v7h-7zm0 11h7v7h-7z'),
         ('admin.visitors',            'Visitantes',   'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75M9 3a4 4 0 100 8 4 4 0 000-8z'),
@@ -127,40 +153,42 @@
       {% for endpoint, label, icon in nav_items %}
         {% set is_active = request.endpoint == endpoint or
            (endpoint == 'admin.visitors' and request.endpoint in ('admin.visitor_block','admin.visitor_unblock','admin.visitor_detail')) %}
-        <a href="{{ url_for(endpoint) }}"
-           onclick="closeSidebar()"
+        <a href="{{ url_for(endpoint) }}" onclick="closeSidebar()"
+           title="{{ label }}"
            class="nav-link flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-slate-400 transition-colors
                   {{ 'nav-active' if is_active else '' }}">
           <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="{{ icon }}"/>
           </svg>
-          {{ label }}
+          <span class="nav-label">{{ label }}</span>
         </a>
       {% endfor %}
     </nav>
 
-    <div class="px-3 py-4 border-t border-white/5 space-y-0.5">
+    <!-- Footer -->
+    <div class="px-2 py-3 border-t border-white/5 space-y-0.5">
       <a href="/guest/s/default/?id=aa:bb:cc:00:00:01&ap=00:00:00:00:00:01&ssid=Preview"
-         target="_blank"
-         class="nav-link flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-slate-500 transition-colors">
+         target="_blank" title="Preview do portal"
+         class="nav-link flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-slate-500 transition-colors">
         <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
         </svg>
-        Preview do portal
+        <span class="nav-label sidebar-footer-text">Preview do portal</span>
       </a>
-      <a href="{{ url_for('admin.logout') }}"
-         class="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm text-slate-500
+      <a href="{{ url_for('admin.logout') }}" title="Sair"
+         class="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-slate-500
                 hover:bg-red-500/10 hover:text-red-400 transition-colors">
         <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+          <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
+          <polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
         </svg>
-        Sair
+        <span class="nav-label sidebar-footer-text">Sair</span>
       </a>
     </div>
   </aside>
 
-  <!-- Main content -->
-  <main id="main-content" class="flex-1 overflow-auto p-4 md:p-6 min-h-screen">
+  <!-- ── Main ── -->
+  <main id="main-wrap" class="flex-1 overflow-auto p-4 md:p-6">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         <div class="mb-4 space-y-2">
@@ -178,50 +206,51 @@
   </main>
 
   <script>
+    // ── State ──
     const sidebar  = document.getElementById('sidebar');
     const overlay  = document.getElementById('overlay');
-    const iconMenu = document.getElementById('icon-menu');
-    const iconClose= document.getElementById('icon-close');
-    let isOpen = false;
+    const iconHam  = document.getElementById('icon-ham');
+    const iconX    = document.getElementById('icon-x');
+    let mobileOpen = false;
+    const COLLAPSED_KEY = 'sidebar_collapsed';
 
-    function openSidebar() {
-      isOpen = true;
-      sidebar.classList.remove('closed');
-      sidebar.classList.add('open');
-      overlay.classList.remove('hidden');
-      overlay.classList.add('visible');
-      iconMenu.classList.add('hidden');
-      iconClose.classList.remove('hidden');
-      document.body.style.overflow = 'hidden';
+    // ── Desktop collapse ──
+    function toggleCollapse() {
+      const collapsed = document.body.classList.toggle('sidebar-collapsed');
+      localStorage.setItem(COLLAPSED_KEY, collapsed ? '1' : '0');
+    }
+    // Restore on load
+    if (localStorage.getItem(COLLAPSED_KEY) === '1') {
+      document.body.classList.add('sidebar-collapsed');
     }
 
+    // ── Mobile drawer ──
+    function openSidebar() {
+      mobileOpen = true;
+      sidebar.classList.add('mobile-open');
+      overlay.classList.replace('hidden', 'visible');
+      iconHam.classList.add('hidden');
+      iconX.classList.remove('hidden');
+      document.body.style.overflow = 'hidden';
+    }
     function closeSidebar() {
-      isOpen = false;
-      sidebar.classList.remove('open');
-      sidebar.classList.add('closed');
-      overlay.classList.remove('visible');
-      overlay.classList.add('hidden');
-      iconMenu.classList.remove('hidden');
-      iconClose.classList.add('hidden');
+      mobileOpen = false;
+      sidebar.classList.remove('mobile-open');
+      overlay.classList.replace('visible', 'hidden');
+      iconHam.classList.remove('hidden');
+      iconX.classList.add('hidden');
       document.body.style.overflow = '';
     }
 
-    document.getElementById('menu-btn').addEventListener('click', function() {
-      isOpen ? closeSidebar() : openSidebar();
+    document.getElementById('menu-btn').addEventListener('click', () => {
+      mobileOpen ? closeSidebar() : openSidebar();
     });
+    document.addEventListener('keydown', e => { if (e.key === 'Escape' && mobileOpen) closeSidebar(); });
 
-    // Fecha com ESC
-    document.addEventListener('keydown', function(e) {
-      if (e.key === 'Escape' && isOpen) closeSidebar();
-    });
-
-    // Em desktop, garante sidebar visível
-    const mq = window.matchMedia('(min-width: 768px)');
-    function onResize(e) {
+    // Reset drawer on resize to desktop
+    window.matchMedia('(min-width: 768px)').addEventListener('change', e => {
       if (e.matches) { closeSidebar(); document.body.style.overflow = ''; }
-    }
-    mq.addEventListener('change', onResize);
+    });
   </script>
-
 </body>
 </html>
