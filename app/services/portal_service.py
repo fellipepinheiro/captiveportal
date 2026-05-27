@@ -41,6 +41,21 @@ def authorize_visitor(portal_session: PortalSession, visitor: Visitor) -> bool:
         except Exception:
             pass  # nunca bloqueia o fluxo principal
 
+        # ── UniFi: libera o cliente no Guest Portal ───────────────────────
+        try:
+            from app.routes.admin import unifi_authorize_client
+            ok, msg = unifi_authorize_client(
+                client_mac=portal_session.client_mac,
+                client_ip=portal_session.client_ip,
+            )
+            if not ok:
+                import logging
+                logging.getLogger(__name__).warning("UniFi authorize failed: %s", msg)
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning("UniFi authorize exception: %s", exc)
+            # nunca bloqueia o fluxo principal
+
         return True
     except Exception:
         db.session.rollback()
