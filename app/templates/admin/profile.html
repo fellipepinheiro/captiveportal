@@ -44,13 +44,13 @@
           <button class="text-xs text-red-400 hover:text-red-300 transition">Remover foto</button>
         </form>
         {% endif %}
-        <p class="text-xs text-slate-600">PNG, JPG ou WEBP · Máx. 1 MB</p>
+        <p class="text-xs text-slate-600">PNG, JPG ou WEBP · Máx. 20 MB</p>
       </div>
     </div>
   </div>
 
   <!-- Card dados -->
-  <div class="bg-white/5 border border-white/10 rounded-2xl p-6">
+  <div class="bg-white/5 border border-white/10 rounded-2xl p-6 mb-4">
     <p class="text-xs text-slate-400 font-medium mb-4 uppercase tracking-wider">Informações pessoais</p>
     <form method="post" action="{{ url_for('admin.profile_save') }}" class="space-y-4">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -92,5 +92,46 @@
       </div>
     </form>
   </div>
+
+  <!-- Card alterar senha -->
+  <div class="bg-white/5 border border-white/10 rounded-2xl p-6">
+    <p class="text-xs text-slate-400 font-medium mb-4 uppercase tracking-wider">Alterar senha</p>
+    <form method="post" action="{{ url_for('admin.profile_change_password') }}" class="space-y-4">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">Senha atual</label>
+        <input type="password" name="current_password" required autocomplete="current-password"
+               class="w-full rounded-xl bg-white/10 border border-white/20 text-white px-3 py-2.5 text-sm
+                      focus:outline-none focus:ring-2 focus:ring-teal-500/40"
+               placeholder="••••••••">
+      </div>
+
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">Nova senha</label>
+        <input type="password" name="new_password" required autocomplete="new-password"
+               minlength="12"
+               class="w-full rounded-xl bg-white/10 border border-white/20 text-white px-3 py-2.5 text-sm
+                      focus:outline-none focus:ring-2 focus:ring-teal-500/40"
+               placeholder="Mínimo 12 caracteres">
+      </div>
+
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">Confirmar nova senha</label>
+        <input type="password" name="confirm_password" required autocomplete="new-password"
+               minlength="12"
+               class="w-full rounded-xl bg-white/10 border border-white/20 text-white px-3 py-2.5 text-sm
+                      focus:outline-none focus:ring-2 focus:ring-teal-500/40"
+               placeholder="Repita a nova senha">
+      </div>
+
+      <div class="pt-1">
+        <button type="submit"
+          class="w-full py-2.5 rounded-xl text-sm font-semibold
+                 bg-white/10 hover:bg-white/15 text-slate-200 transition">Alterar senha</button>
+      </div>
+    </form>
+  </div>
+
 </div>
 {% endblock %}

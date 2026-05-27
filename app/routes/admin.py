@@ -95,7 +95,7 @@ def _compress_avatar(data: bytes) -> bytes:
     return buf.getvalue()
 
 
-# ─── Media (logo pública) ───────────────────────────────────────────────────
+# ─── Media (logo pública) ─────────────────────────────────────────────────────────────────────
 
 @bp.get("/media/<path:filename>")
 @csrf.exempt
@@ -109,7 +109,7 @@ def serve_media(filename):
     return send_from_directory(UPLOAD_FOLDER.resolve(), safe)
 
 
-# ─── Auth ─────────────────────────────────────────────────────────────────
+# ─── Auth ─────────────────────────────────────────────────────────────────────────────
 
 @bp.get("/login")
 def login():
@@ -140,7 +140,7 @@ def logout():
     return redirect(url_for("admin.login"))
 
 
-# ─── Dashboard ──────────────────────────────────────────────────────────────
+# ─── Dashboard ──────────────────────────────────────────────────────────────────────
 
 @bp.get("/")
 @login_required
@@ -164,7 +164,7 @@ def dashboard():
     )
 
 
-# ─── Visitors ──────────────────────────────────────────────────────────────
+# ─── Visitors ────────────────────────────────────────────────────────────────────
 
 @bp.get("/visitantes")
 @login_required
@@ -239,7 +239,7 @@ def export_visitors():
     )
 
 
-# ─── Reports ──────────────────────────────────────────────────────────────
+# ─── Reports ──────────────────────────────────────────────────────────────────────
 
 @bp.get("/relatorios")
 @login_required
@@ -330,7 +330,7 @@ def reports_data():
     })
 
 
-# ─── Integrations ──────────────────────────────────────────────────────────
+# ─── Integrations ───────────────────────────────────────────────────────────────────
 
 @bp.get("/integracoes")
 @login_required
@@ -514,7 +514,7 @@ def unifi_authorize_client(
         return False, f"Erro ao comunicar com UniFi: {exc}"
 
 
-# ─── Appearance ──────────────────────────────────────────────────────────────
+# ─── Appearance ────────────────────────────────────────────────────────────────────
 
 @bp.get("/aparencia")
 @login_required
@@ -615,7 +615,7 @@ def remove_logo():
     return redirect(url_for("admin.settings_appearance"))
 
 
-# ─── Admin Users ──────────────────────────────────────────────────────────────
+# ─── Admin Users ───────────────────────────────────────────────────────────────────
 
 @bp.get("/usuarios")
 @login_required
@@ -687,7 +687,7 @@ def user_delete(uid: int):
     return redirect(url_for("admin.users"))
 
 
-# ─── My Profile ──────────────────────────────────────────────────────────────
+# ─── My Profile ───────────────────────────────────────────────────────────────────
 
 @bp.get("/perfil")
 @login_required
@@ -703,6 +703,36 @@ def profile_save():
     current_user.email     = request.form.get("email", "").strip()[:120] or None
     db.session.commit()
     flash("Perfil atualizado com sucesso.", "success")
+    return redirect(url_for("admin.profile"))
+
+
+@bp.post("/perfil/senha")
+@login_required
+@limiter.limit("5 per minute")
+def profile_change_password():
+    current_password = request.form.get("current_password", "")
+    new_password     = request.form.get("new_password", "")
+    confirm_password = request.form.get("confirm_password", "")
+
+    if not current_user.check_password(current_password):
+        flash("Senha atual incorreta.", "error")
+        return redirect(url_for("admin.profile"))
+
+    if len(new_password) < 12:
+        flash("A nova senha deve ter ao menos 12 caracteres.", "error")
+        return redirect(url_for("admin.profile"))
+
+    if new_password != confirm_password:
+        flash("A confirmação da senha não confere.", "error")
+        return redirect(url_for("admin.profile"))
+
+    if current_user.check_password(new_password):
+        flash("A nova senha deve ser diferente da senha atual.", "error")
+        return redirect(url_for("admin.profile"))
+
+    current_user.set_password(new_password)
+    db.session.commit()
+    flash("Senha alterada com sucesso.", "success")
     return redirect(url_for("admin.profile"))
 
 
