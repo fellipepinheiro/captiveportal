@@ -1,82 +1,78 @@
 {% extends 'admin/base_admin.html' %}
 {% block title %}Relatórios{% endblock %}
 {% block content %}
-<div class="flex items-center justify-between mb-6">
-  <h1 class="text-2xl font-bold text-white">Relatórios de Acesso</h1>
+
+<!-- Header -->
+<div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+  <h1 class="text-xl font-bold text-white">Relatórios</h1>
   <div class="flex gap-2" id="periodButtons">
-    <button onclick="loadData(7)"  data-days="7"  class="period-btn px-3 py-1.5 rounded text-sm bg-white/10 text-white/70 hover:bg-white/20">7 dias</button>
-    <button onclick="loadData(30)" data-days="30" class="period-btn px-3 py-1.5 rounded text-sm bg-teal-600 text-white">30 dias</button>
-    <button onclick="loadData(90)" data-days="90" class="period-btn px-3 py-1.5 rounded text-sm bg-white/10 text-white/70 hover:bg-white/20">90 dias</button>
+    <button onclick="loadData(7)"  data-days="7"  class="period-btn px-3 py-1.5 rounded-lg text-sm bg-white/10 text-white/70 hover:bg-white/20">7 dias</button>
+    <button onclick="loadData(30)" data-days="30" class="period-btn px-3 py-1.5 rounded-lg text-sm bg-teal-600 text-white">30 dias</button>
+    <button onclick="loadData(90)" data-days="90" class="period-btn px-3 py-1.5 rounded-lg text-sm bg-white/10 text-white/70 hover:bg-white/20">90 dias</button>
   </div>
 </div>
 
-<!-- Alerta de erro -->
 <div id="errorBanner" class="hidden mb-4 px-4 py-3 rounded-xl bg-red-500/15 border border-red-500/30 text-red-400 text-sm"></div>
 
-<!-- KPIs do período -->
-<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-  <div class="bg-white/5 border border-white/10 rounded-xl p-4">
+<!-- KPIs -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
+  <div class="bg-white/5 border border-white/10 rounded-xl p-3">
     <p class="text-white/50 text-xs uppercase mb-1">Sessões</p>
-    <p id="kpi-sessions" class="text-2xl font-bold text-white tabular-nums">—</p>
+    <p id="kpi-sessions" class="text-xl font-bold text-white tabular-nums">—</p>
   </div>
-  <div class="bg-white/5 border border-white/10 rounded-xl p-4">
+  <div class="bg-white/5 border border-white/10 rounded-xl p-3">
     <p class="text-white/50 text-xs uppercase mb-1">Autorizadas</p>
-    <p id="kpi-authorized" class="text-2xl font-bold text-teal-400 tabular-nums">—</p>
+    <p id="kpi-authorized" class="text-xl font-bold text-teal-400 tabular-nums">—</p>
   </div>
-  <div class="bg-white/5 border border-white/10 rounded-xl p-4">
-    <p class="text-white/50 text-xs uppercase mb-1">Novos visitantes</p>
-    <p id="kpi-visitors" class="text-2xl font-bold text-white tabular-nums">—</p>
+  <div class="bg-white/5 border border-white/10 rounded-xl p-3">
+    <p class="text-white/50 text-xs uppercase mb-1">Novos</p>
+    <p id="kpi-visitors" class="text-xl font-bold text-white tabular-nums">—</p>
   </div>
-  <div class="bg-white/5 border border-white/10 rounded-xl p-4">
-    <p class="text-white/50 text-xs uppercase mb-1">Taxa de autenticação</p>
-    <p id="kpi-rate" class="text-2xl font-bold text-emerald-400 tabular-nums">—</p>
+  <div class="bg-white/5 border border-white/10 rounded-xl p-3">
+    <p class="text-white/50 text-xs uppercase mb-1">Taxa auth.</p>
+    <p id="kpi-rate" class="text-xl font-bold text-emerald-400 tabular-nums">—</p>
   </div>
 </div>
 
-<!-- Gráfico de linha: acessos por dia -->
-<div class="bg-white/5 border border-white/10 rounded-xl p-4 mb-6">
-  <h2 class="text-white/70 text-sm uppercase mb-3">Acessos por dia</h2>
-  <div id="chartLine" style="height:300px"></div>
+<!-- Gráfico linha -->
+<div class="bg-white/5 border border-white/10 rounded-xl p-4 mb-4">
+  <h2 class="text-white/70 text-xs uppercase tracking-wide mb-3">Acessos por dia</h2>
+  <div id="chartLine" style="height:220px"></div>
 </div>
 
-<!-- Gráficos de pizza -->
+<!-- Gráficos de pizza: empilhados no mobile, lado a lado no desktop -->
 <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
   <div class="bg-white/5 border border-white/10 rounded-xl p-4">
-    <h2 class="text-white/70 text-sm uppercase mb-3">Dispositivos</h2>
-    <div id="chartDevice" style="height:240px"></div>
+    <h2 class="text-white/70 text-xs uppercase tracking-wide mb-3">Dispositivos</h2>
+    <div id="chartDevice" style="height:200px"></div>
   </div>
   <div class="bg-white/5 border border-white/10 rounded-xl p-4">
-    <h2 class="text-white/70 text-sm uppercase mb-3">Sistemas operacionais</h2>
-    <div id="chartOS" style="height:240px"></div>
+    <h2 class="text-white/70 text-xs uppercase tracking-wide mb-3">Sistemas operacionais</h2>
+    <div id="chartOS" style="height:200px"></div>
   </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
 <script>
 const COLORS = ['#14b8a6','#6366f1','#f59e0b','#ef4444','#8b5cf6','#22c55e'];
+const isMobile = () => window.innerWidth < 768;
 
 const chartLine   = echarts.init(document.getElementById('chartLine'),   'dark');
 const chartDevice = echarts.init(document.getElementById('chartDevice'), 'dark');
 const chartOS     = echarts.init(document.getElementById('chartOS'),     'dark');
-
-[chartLine, chartDevice, chartOS].forEach(c => {
-  c.setOption({ backgroundColor: 'transparent' });
-});
+[chartLine, chartDevice, chartOS].forEach(c => c.setOption({ backgroundColor: 'transparent' }));
 
 function showError(msg) {
   const el = document.getElementById('errorBanner');
   el.textContent = '⚠️ Erro ao carregar dados: ' + msg;
   el.classList.remove('hidden');
 }
-
-function clearError() {
-  document.getElementById('errorBanner').classList.add('hidden');
-}
+function clearError() { document.getElementById('errorBanner').classList.add('hidden'); }
 
 function setPeriodBtn(days) {
   document.querySelectorAll('.period-btn').forEach(b => {
     const active = parseInt(b.dataset.days) === days;
-    b.className = `period-btn px-3 py-1.5 rounded text-sm ${
+    b.className = `period-btn px-3 py-1.5 rounded-lg text-sm ${
       active ? 'bg-teal-600 text-white' : 'bg-white/10 text-white/70 hover:bg-white/20'
     }`;
   });
@@ -85,73 +81,52 @@ function setPeriodBtn(days) {
 async function loadData(days = 30) {
   clearError();
   setPeriodBtn(days);
-
   let res;
-  try {
-    res = await fetch(`/admin/relatorios/dados?days=${days}`);
-  } catch (err) {
-    showError('Falha de rede — ' + err.message);
-    return;
-  }
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => '');
-    showError(`HTTP ${res.status} — ${text.slice(0, 200)}`);
-    return;
-  }
-
+  try { res = await fetch(`/admin/relatorios/dados?days=${days}`); }
+  catch (err) { showError('Falha de rede — ' + err.message); return; }
+  if (!res.ok) { const t = await res.text().catch(() => ''); showError(`HTTP ${res.status} — ${t.slice(0,200)}`); return; }
   let data;
-  try {
-    data = await res.json();
-  } catch (err) {
-    showError('Resposta inválida (não é JSON) — ' + err.message);
-    return;
-  }
+  try { data = await res.json(); }
+  catch (err) { showError('Resposta inválida — ' + err.message); return; }
 
-  // KPIs
-  document.getElementById('kpi-sessions').textContent   = (data.totals.sessions   ?? 0).toLocaleString('pt-BR');
-  document.getElementById('kpi-authorized').textContent = (data.totals.authorized  ?? 0).toLocaleString('pt-BR');
-  document.getElementById('kpi-visitors').textContent   = (data.totals.new_visitors ?? 0).toLocaleString('pt-BR');
-  document.getElementById('kpi-rate').textContent       = (data.totals.auth_rate   ?? 0) + '%';
+  document.getElementById('kpi-sessions').textContent    = (data.totals.sessions    ?? 0).toLocaleString('pt-BR');
+  document.getElementById('kpi-authorized').textContent  = (data.totals.authorized  ?? 0).toLocaleString('pt-BR');
+  document.getElementById('kpi-visitors').textContent    = (data.totals.new_visitors ?? 0).toLocaleString('pt-BR');
+  document.getElementById('kpi-rate').textContent        = (data.totals.auth_rate   ?? 0) + '%';
 
-  // Gráfico linha
+  const mobile = isMobile();
+
   chartLine.setOption({
     tooltip: { trigger: 'axis' },
-    legend: { data: ['Sessões','Autorizadas','Novos visitantes'], textStyle: { color: '#94a3b8' } },
-    grid:  { left: '3%', right: '3%', bottom: '3%', containLabel: true },
-    xAxis: { type: 'category', data: data.labels, axisLabel: { color: '#94a3b8', interval: Math.floor(data.labels.length / 10) } },
+    legend: { data: ['Sessões','Autorizadas','Novos'], textStyle: { color: '#94a3b8' }, top: 0 },
+    grid:  { left: mobile ? '2%' : '3%', right: '2%', bottom: '3%', top: '14%', containLabel: true },
+    xAxis: { type: 'category', data: data.labels,
+             axisLabel: { color: '#94a3b8', interval: mobile ? Math.floor(data.labels.length / 5) : Math.floor(data.labels.length / 10) } },
     yAxis: { type: 'value', axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#ffffff15' } } },
     series: [
-      { name: 'Sessões',          type: 'line', data: data.sessions,     smooth: true, areaStyle: { opacity: 0.15 }, color: COLORS[0], lineStyle: { width: 2 } },
-      { name: 'Autorizadas',      type: 'line', data: data.authorized,   smooth: true, areaStyle: { opacity: 0.10 }, color: COLORS[1], lineStyle: { width: 2 } },
-      { name: 'Novos visitantes', type: 'bar',  data: data.new_visitors, color: COLORS[2], opacity: 0.7, barMaxWidth: 12 },
+      { name: 'Sessões',    type: 'line', data: data.sessions,     smooth: true, areaStyle: { opacity: 0.15 }, color: COLORS[0], lineStyle: { width: 2 } },
+      { name: 'Autorizadas', type: 'line', data: data.authorized,   smooth: true, areaStyle: { opacity: 0.10 }, color: COLORS[1], lineStyle: { width: 2 } },
+      { name: 'Novos',       type: 'bar',  data: data.new_visitors, color: COLORS[2], opacity: 0.7, barMaxWidth: 10 },
     ],
   });
 
-  // Device pie
-  chartDevice.setOption({
+  const pieOpts = (containerId, seriesData) => ({
     tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-    legend: { bottom: 0, textStyle: { color: '#94a3b8' } },
-    series: [{
-      type: 'pie', radius: ['40%','70%'], center: ['50%','45%'],
+    legend: { bottom: 0, textStyle: { color: '#94a3b8' }, itemWidth: 10, itemHeight: 10,
+              textStyle: { fontSize: 11 } },
+    series: [{ type: 'pie', radius: ['35%','60%'], center: ['50%','42%'],
       label: { show: false },
-      data: (data.device_data || []).map((d,i) => ({ ...d, itemStyle: { color: COLORS[i % COLORS.length] } })),
+      data: seriesData.map((d,i) => ({ ...d, itemStyle: { color: COLORS[i % COLORS.length] } })),
     }],
   });
 
-  // OS pie
-  chartOS.setOption({
-    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-    legend: { bottom: 0, textStyle: { color: '#94a3b8' } },
-    series: [{
-      type: 'pie', radius: ['40%','70%'], center: ['50%','45%'],
-      label: { show: false },
-      data: (data.os_data || []).map((d,i) => ({ ...d, itemStyle: { color: COLORS[i % COLORS.length] } })),
-    }],
-  });
+  chartDevice.setOption(pieOpts('chartDevice', data.device_data || []));
+  chartOS.setOption(pieOpts('chartOS', data.os_data || []));
 }
 
-window.addEventListener('resize', () => [chartLine, chartDevice, chartOS].forEach(c => c.resize()));
+window.addEventListener('resize', () => {
+  [chartLine, chartDevice, chartOS].forEach(c => c.resize());
+});
 loadData(30);
 </script>
 {% endblock %}
