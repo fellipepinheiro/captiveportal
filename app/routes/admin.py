@@ -20,8 +20,10 @@ from app.models.site_config import SiteConfig
 bp = Blueprint("admin", __name__)
 
 UPLOAD_FOLDER      = Path("app/static/uploads")
+AVATAR_FOLDER      = Path("app/static/uploads/avatars")
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
 MAX_LOGO_BYTES     = 2 * 1024 * 1024
+MAX_AVATAR_BYTES   = 1 * 1024 * 1024
 HEX_COLOR_RE       = re.compile(r'^#[0-9A-Fa-f]{6}$')
 LOCAL_TZ           = ZoneInfo("America/Sao_Paulo")
 
@@ -60,10 +62,15 @@ def _load_cfg() -> dict:
 @csrf.exempt
 def serve_media(filename):
     safe = secure_filename(filename)
+    # Suporta subpastas: avatars/
+    full_path = UPLOAD_FOLDER / safe
+    avatar_path = UPLOAD_FOLDER / "avatars" / safe
+    if (UPLOAD_FOLDER / "avatars" / Path(safe).name).exists():
+        return send_from_directory((UPLOAD_FOLDER / "avatars").resolve(), Path(safe).name)
     return send_from_directory(UPLOAD_FOLDER.resolve(), safe)
 
 
-# ─── Auth ────────────────────────────────────────────────────────────────────
+# ─── Auth ─────────────────────────────────────────────────────────────────
 
 @bp.get("/login")
 def login():
@@ -94,7 +101,7 @@ def logout():
     return redirect(url_for("admin.login"))
 
 
-# ─── Dashboard ───────────────────────────────────────────────────────────────
+# ─── Dashboard ──────────────────────────────────────────────────────────────
 
 @bp.get("/")
 @login_required
@@ -118,7 +125,7 @@ def dashboard():
     )
 
 
-# ─── Visitors ────────────────────────────────────────────────────────────────
+# ─── Visitors ──────────────────────────────────────────────────────────────
 
 @bp.get("/visitantes")
 @login_required
@@ -193,7 +200,7 @@ def export_visitors():
     )
 
 
-# ─── Reports ──────────────────────────────────────────────────────────────────
+# ─── Reports ──────────────────────────────────────────────────────────────
 
 @bp.get("/relatorios")
 @login_required
@@ -284,7 +291,7 @@ def reports_data():
     })
 
 
-# ─── Integrations ─────────────────────────────────────────────────────────────
+# ─── Integrations ──────────────────────────────────────────────────────────
 
 @bp.get("/integracoes")
 @login_required
@@ -468,7 +475,7 @@ def unifi_authorize_client(
         return False, f"Erro ao comunicar com UniFi: {exc}"
 
 
-# ─── Appearance ───────────────────────────────────────────────────────────────
+# ─── Appearance ──────────────────────────────────────────────────────────────
 
 @bp.get("/aparencia")
 @login_required
@@ -639,3 +646,68 @@ def user_delete(uid: int):
     db.session.commit()
     flash(f"Usuário '{user.username}' excluído.", "success")
     return redirect(url_for("admin.users"))
+
+
+# ─── My Profile ──────────────────────────────────────────────────────────────
+
+@bp.get("/perfil")
+@login_required
+def profile():
+    return render_template("admin/profile.html")
+
+
+@bp.post("/perfil/salvar")
+@login_required
+def profile_save():
+    current_user.full_name = request.form.get("full_name", "").strip()[:120] or None
+    current_user.phone     = request.form.get("phone", "").strip()[:30] or None
+    current_user.email     = request.form.get("email", "").strip()[:120] or None
+    db.session.commit()
+    flash("Perfil atualizado com sucesso.", "success")
+    return redirect(url_for("admin.profile"))
+
+
+@bp.post("/perfil/avatar")
+@login_required
+def profile_avatar():
+    file = request.files.get("avatar")
+    if not file or file.filename == "":
+        flash("Nenhum arquivo selecionado.", "error")
+        return redirect(url_for("admin.profile"))
+
+    filename = secure_filename(file.filename)
+    if not _allowed(filename):
+        flash("Formato inválido. Use PNG, JPG ou WEBP.", "error")
+        return redirect(url_for("admin.profile"))
+
+    data = file.read()
+    if len(data) > MAX_AVATAR_BYTES:
+        flash("Imagem muito grande. Máximo 1 MB.", "error")
+        return redirect(url_for("admin.profile"))
+
+    MAGIC = {b'\x89PNG', b'\xff\xd8\xff', b'RIFF'}
+    if not any(data.startswith(m) for m in MAGIC):
+        flash("Arquivo não reconhecido como imagem válida.", "error")
+        return redirect(url_for("admin.profile"))
+
+    AVATAR_FOLDER.mkdir(parents=True, exist_ok=True)
+    ext = filename.rsplit(".", 1)[1].lower()
+    save_name = f"avatar_{current_user.id}.{ext}"
+    (AVATAR_FOLDER / save_name).write_bytes(data)
+    current_user.avatar_path = save_name
+    db.session.commit()
+    flash("Foto de perfil atualizada.", "success")
+    return redirect(url_for("admin.profile"))
+
+
+@bp.post("/perfil/avatar/remover")
+@login_required
+def profile_avatar_remove():
+    if current_user.avatar_path:
+        path = AVATAR_FOLDER / current_user.avatar_path
+        if path.exists():
+            path.unlink()
+        current_user.avatar_path = None
+        db.session.commit()
+    flash("Foto removida.", "success")
+    return redirect(url_for("admin.profile"))
