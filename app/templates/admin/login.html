@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pt-BR" class="h-full">
+<html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,19 +8,26 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     body { font-family: 'Inter', sans-serif; }
+    input:-webkit-autofill {
+      -webkit-box-shadow: 0 0 0 100px #1e293b inset;
+      -webkit-text-fill-color: #f1f5f9;
+    }
   </style>
 </head>
 <body class="min-h-screen bg-slate-950 flex items-center justify-center px-4"
-      style="background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 50%, #0f172a 100%)">
+      style="background: radial-gradient(ellipse at 50% 0%, #0f3638 0%, #0f172a 60%)">
 
   <div class="w-full max-w-sm">
 
-    <!-- Logo/ícone -->
+    <!-- Icône + título -->
     <div class="text-center mb-8">
-      <div class="inline-flex items-center justify-center h-14 w-14 rounded-2xl bg-teal-600/20 border border-teal-500/20 mb-4">
-        <svg class="h-7 w-7 text-teal-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+      <div class="inline-flex items-center justify-center h-14 w-14 rounded-2xl
+                  bg-teal-600/20 border border-teal-500/20 mb-4">
+        <svg class="h-7 w-7 text-teal-400" fill="none" stroke="currentColor"
+             stroke-width="1.5" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round"
-                d="M8.288 15.038a5.25 5.25 0 017.424 0M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0
+                d="M8.288 15.038a5.25 5.25 0 017.424 0
+                   M5.106 11.856c3.807-3.808 9.98-3.808 13.788 0
                    M1.924 8.674c5.565-5.565 14.587-5.565 20.152 0
                    M12.53 18.22l-.53.53-.53-.53a.75.75 0 011.06 0z"/>
         </svg>
@@ -34,7 +41,7 @@
       {% if messages %}
         {% for cat, msg in messages %}
           <div class="mb-4 rounded-xl px-4 py-3 text-sm
-            {% if cat == 'error' %}bg-rose-500/10 border border-rose-400/20 text-rose-200
+            {% if cat == 'error' %}bg-rose-500/10 border border-rose-400/20 text-rose-300
             {% else %}bg-teal-500/10 border border-teal-400/20 text-teal-200{% endif %}">
             {{ msg }}
           </div>
@@ -42,33 +49,39 @@
       {% endif %}
     {% endwith %}
 
-    <!-- Card -->
-    <div class="rounded-2xl bg-slate-900/80 border border-white/8 p-6 shadow-2xl"
-         style="backdrop-filter: blur(16px)">
+    <!-- Card do formulário -->
+    <div class="rounded-2xl bg-slate-900/90 border border-white/8 p-6 shadow-2xl">
       <form method="post" action="{{ url_for('admin.login_post') }}" class="space-y-4">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
         <div>
           <label class="block text-xs font-medium text-slate-400 mb-1.5">Usuário</label>
           <input type="text" name="username" required autocomplete="username"
-                 class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2.5 text-sm text-slate-100
-                        placeholder-slate-600 focus:outline-none focus:border-teal-500/60
+                 autofocus
+                 class="w-full rounded-xl bg-slate-800 border border-white/10 px-4 py-2.5
+                        text-sm text-slate-100 placeholder-slate-600
+                        focus:outline-none focus:border-teal-500/60
                         focus:ring-2 focus:ring-teal-500/20 transition">
         </div>
 
         <div>
           <label class="block text-xs font-medium text-slate-400 mb-1.5">Senha</label>
           <div class="relative">
-            <input type="password" name="password" id="pw" required autocomplete="current-password"
-                   class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2.5 pr-11 text-sm text-slate-100
-                          placeholder-slate-600 focus:outline-none focus:border-teal-500/60
+            <input type="password" name="password" id="pw" required
+                   autocomplete="current-password"
+                   class="w-full rounded-xl bg-slate-800 border border-white/10 px-4 py-2.5 pr-11
+                          text-sm text-slate-100 placeholder-slate-600
+                          focus:outline-none focus:border-teal-500/60
                           focus:ring-2 focus:ring-teal-500/20 transition">
             <button type="button" onclick="togglePw()"
-                    class="absolute inset-y-0 right-3 flex items-center text-slate-500 hover:text-slate-300 transition">
-              <svg id="eye-icon" class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                    class="absolute inset-y-0 right-3 flex items-center
+                           text-slate-500 hover:text-slate-300 transition">
+              <svg id="eye-icon" class="w-4 h-4" fill="none" stroke="currentColor"
+                   stroke-width="2" viewBox="0 0 24 24">
                 <path stroke-linecap="round" stroke-linejoin="round"
-                      d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7
-                         -1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                      d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943
+                         9.542 7-1.274 4.057-5.064 7-9.542 7
+                         -4.477 0-8.268-2.943-9.542-7z"/>
                 <circle cx="12" cy="12" r="3"/>
               </svg>
             </button>
@@ -76,8 +89,9 @@
         </div>
 
         <button type="submit"
-                class="w-full rounded-xl bg-teal-600 hover:bg-teal-500 active:scale-[0.98]
-                       py-2.5 text-sm font-semibold text-white transition-all mt-2">
+                class="w-full rounded-xl bg-teal-600 hover:bg-teal-500
+                       active:scale-[0.98] py-2.5 text-sm font-semibold
+                       text-white transition-all mt-1">
           Entrar
         </button>
       </form>
@@ -88,13 +102,10 @@
     function togglePw() {
       const pw = document.getElementById('pw');
       const ic = document.getElementById('eye-icon');
-      if (pw.type === 'password') {
-        pw.type = 'text';
-        ic.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.542 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>';
-      } else {
-        pw.type = 'password';
-        ic.innerHTML = '<path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/><circle cx="12" cy="12" r="3"/>';
-      }
+      const open  = '<path stroke-linecap="round" stroke-linejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/><circle cx="12" cy="12" r="3"/>';
+      const closed = '<path stroke-linecap="round" stroke-linejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.542-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.542 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>';
+      if (pw.type === 'password') { pw.type = 'text';     ic.innerHTML = closed; }
+      else                        { pw.type = 'password'; ic.innerHTML = open;   }
     }
   </script>
 </body>
