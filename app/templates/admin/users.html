@@ -4,7 +4,7 @@
 
 <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
   <h1 class="text-xl font-bold text-white">Usuários</h1>
-  <button onclick="document.getElementById('newUserModal').classList.remove('hidden'); document.getElementById('newUserModal').classList.add('flex');"
+  <button onclick="openModal('newUserModal')"
           class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white btn-accent">
     <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
       <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
@@ -44,18 +44,25 @@
             {% elif u.role == 'admin' %}bg-teal-500/15 text-teal-400
             {% else %}bg-slate-500/15 text-slate-400{% endif %}">{{ u.role }}</span>
         </td>
-        <td class="px-5 py-3 text-xs text-slate-500">
+        <td class="px-5 py-3 text-xs text-slate-400">
           {% if u.last_login %}{{ u.last_login.strftime('%d/%m/%Y %H:%M') }}{% else %}—{% endif %}
         </td>
-        <td class="px-5 py-3 text-center">
-          <div class="flex justify-center gap-2">
+        <td class="px-5 py-3">
+          <div class="flex justify-center gap-1.5 flex-wrap">
             {% if u.id != current_user.id %}
+            <!-- Trocar senha -->
+            <button onclick="openPasswordModal({{ u.id }}, '{{ u.username | e }}')"
+              class="text-xs px-2 py-1 rounded-lg bg-blue-700/50 text-blue-300 hover:bg-blue-700 transition">
+              Senha
+            </button>
+            <!-- Ativar / Desativar -->
             <form method="post" action="{{ url_for('admin.user_toggle', uid=u.id) }}" class="inline">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button class="text-xs px-2 py-1 rounded-lg {% if u.is_active %}bg-yellow-700/50 text-yellow-300 hover:bg-yellow-700{% else %}bg-emerald-700/50 text-emerald-300 hover:bg-emerald-700{% endif %} transition">
                 {{ 'Desativar' if u.is_active else 'Ativar' }}
               </button>
             </form>
+            <!-- Excluir -->
             <form method="post" action="{{ url_for('admin.user_delete', uid=u.id) }}" class="inline"
                   onsubmit="return confirm('Excluir usuário {{ u.username | e }}?')">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -91,11 +98,13 @@
         {% elif u.role == 'admin' %}bg-teal-500/15 text-teal-400
         {% else %}bg-slate-500/15 text-slate-400{% endif %}">{{ u.role }}</span>
     </div>
-    {% if u.last_login %}
-    <p class="text-xs text-slate-600 mb-3">Último acesso: {{ u.last_login.strftime('%d/%m/%Y %H:%M') }}</p>
-    {% endif %}
+    <p class="text-xs text-slate-500 mb-3">
+      {% if u.last_login %}Último acesso: {{ u.last_login.strftime('%d/%m/%Y %H:%M') }}{% else %}Nunca acessou{% endif %}
+    </p>
     {% if u.id != current_user.id %}
-    <div class="flex gap-2 pt-2 border-t border-white/8">
+    <div class="flex gap-2 pt-2 border-t border-white/8 flex-wrap">
+      <button onclick="openPasswordModal({{ u.id }}, '{{ u.username | e }}')"
+        class="flex-1 text-xs py-2 rounded-lg bg-blue-700/50 text-blue-300 transition">Senha</button>
       <form method="post" action="{{ url_for('admin.user_toggle', uid=u.id) }}" class="flex-1">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="w-full text-xs py-2 rounded-lg {% if u.is_active %}bg-yellow-700/50 text-yellow-300{% else %}bg-emerald-700/50 text-emerald-300{% endif %} transition">
@@ -136,8 +145,7 @@
                       focus:outline-none focus:ring-2 focus:ring-teal-500/40">
       </div>
       <div class="flex gap-2 pt-1">
-        <button type="button"
-          onclick="document.getElementById('newUserModal').classList.add('hidden'); document.getElementById('newUserModal').classList.remove('flex');"
+        <button type="button" onclick="closeModal('newUserModal')"
           class="flex-1 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-sm">Cancelar</button>
         <button type="submit"
           class="flex-1 py-2.5 btn-accent rounded-xl text-sm font-semibold">Criar</button>
@@ -145,11 +153,75 @@
     </form>
   </div>
 </div>
+
+<!-- Modal trocar senha -->
+<div id="passwordModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/60 px-4">
+  <div class="bg-slate-800 border border-white/20 rounded-2xl p-6 w-full max-w-sm">
+    <h2 class="text-base font-semibold text-white mb-1">Trocar senha</h2>
+    <p class="text-xs text-slate-400 mb-4">Usuário: <span id="pwModalUsername" class="text-slate-200 font-medium"></span></p>
+    <form id="passwordForm" method="post" action="" class="space-y-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">Nova senha (mín. 12 caracteres)</label>
+        <input type="password" name="new_password" id="pwInput" required minlength="12"
+               class="w-full rounded-xl bg-white/10 border border-white/20 text-white px-3 py-2.5 text-sm
+                      focus:outline-none focus:ring-2 focus:ring-blue-500/40">
+      </div>
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">Confirmar senha</label>
+        <input type="password" id="pwConfirm" required minlength="12"
+               class="w-full rounded-xl bg-white/10 border border-white/20 text-white px-3 py-2.5 text-sm
+                      focus:outline-none focus:ring-2 focus:ring-blue-500/40">
+        <p id="pwMismatch" class="text-xs text-red-400 mt-1 hidden">As senhas não coincidem.</p>
+      </div>
+      <div class="flex gap-2 pt-1">
+        <button type="button" onclick="closeModal('passwordModal')"
+          class="flex-1 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-sm">Cancelar</button>
+        <button type="submit"
+          class="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-semibold">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
-document.getElementById('newUserModal').addEventListener('click', function(e) {
-  if (e.target === this) {
-    this.classList.add('hidden'); this.classList.remove('flex');
+function openModal(id) {
+  const el = document.getElementById(id);
+  el.classList.remove('hidden');
+  el.classList.add('flex');
+}
+function closeModal(id) {
+  const el = document.getElementById(id);
+  el.classList.add('hidden');
+  el.classList.remove('flex');
+}
+function openPasswordModal(uid, username) {
+  document.getElementById('pwModalUsername').textContent = username;
+  document.getElementById('passwordForm').action = '/admin/usuarios/' + uid + '/senha';
+  document.getElementById('pwInput').value = '';
+  document.getElementById('pwConfirm').value = '';
+  document.getElementById('pwMismatch').classList.add('hidden');
+  openModal('passwordModal');
+}
+
+// Validação de confirmação de senha no submit
+document.getElementById('passwordForm').addEventListener('submit', function(e) {
+  const pw  = document.getElementById('pwInput').value;
+  const cpw = document.getElementById('pwConfirm').value;
+  if (pw !== cpw) {
+    e.preventDefault();
+    document.getElementById('pwMismatch').classList.remove('hidden');
   }
+});
+document.getElementById('pwConfirm').addEventListener('input', function() {
+  document.getElementById('pwMismatch').classList.add('hidden');
+});
+
+// Fechar ao clicar fora
+['newUserModal', 'passwordModal'].forEach(function(id) {
+  document.getElementById(id).addEventListener('click', function(e) {
+    if (e.target === this) closeModal(id);
+  });
 });
 </script>
 {% endblock %}

@@ -4,6 +4,7 @@ import os
 import re
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from flask import (
     Blueprint, render_template, request, redirect,
@@ -22,6 +23,7 @@ UPLOAD_FOLDER      = Path("app/static/uploads")
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
 MAX_LOGO_BYTES     = 2 * 1024 * 1024
 HEX_COLOR_RE       = re.compile(r'^#[0-9A-Fa-f]{6}$')
+LOCAL_TZ           = ZoneInfo("America/Sao_Paulo")
 
 _DEFAULT_CFG = {
     "portal_title":    "Wi-Fi Visitantes",
@@ -52,7 +54,7 @@ def _load_cfg() -> dict:
     return cfg
 
 
-# ─── Media (logo pública) ────────────────────────────────────────────────────
+# ─── Media (logo pública) ───────────────────────────────────────────────────
 
 @bp.get("/media/<path:filename>")
 @csrf.exempt
@@ -77,7 +79,7 @@ def login_post():
     password = request.form.get("password", "")
     user = AdminUser.query.filter_by(username=username, is_active=True).first()
     if user and user.check_password(password):
-        user.last_login = datetime.now(timezone.utc)
+        user.last_login = datetime.now(LOCAL_TZ).replace(tzinfo=None)
         db.session.commit()
         login_user(user, remember=False)
         return redirect(url_for("admin.dashboard"))
@@ -191,7 +193,7 @@ def export_visitors():
     )
 
 
-# ─── Reports ─────────────────────────────────────────────────────────────────
+# ─── Reports ──────────────────────────────────────────────────────────────────
 
 @bp.get("/relatorios")
 @login_required
@@ -282,7 +284,7 @@ def reports_data():
     })
 
 
-# ─── Integrations ────────────────────────────────────────────────────────────
+# ─── Integrations ─────────────────────────────────────────────────────────────
 
 @bp.get("/integracoes")
 @login_required
@@ -466,7 +468,7 @@ def unifi_authorize_client(
         return False, f"Erro ao comunicar com UniFi: {exc}"
 
 
-# ─── Appearance ──────────────────────────────────────────────────────────────
+# ─── Appearance ───────────────────────────────────────────────────────────────
 
 @bp.get("/aparencia")
 @login_required
@@ -567,7 +569,7 @@ def remove_logo():
     return redirect(url_for("admin.settings_appearance"))
 
 
-# ─── Admin Users ─────────────────────────────────────────────────────────────
+# ─── Admin Users ──────────────────────────────────────────────────────────────
 
 @bp.get("/usuarios")
 @login_required
@@ -622,7 +624,7 @@ def user_password(uid: int):
         return redirect(url_for("admin.users"))
     user.set_password(new_password)
     db.session.commit()
-    flash(f"Senha de '{user.username}' alterada.", "success")
+    flash(f"Senha de '{user.username}' alterada com sucesso.", "success")
     return redirect(url_for("admin.users"))
 
 
