@@ -50,13 +50,13 @@
         <td class="px-5 py-3 text-center">
           <div class="flex justify-center gap-2">
             {% if u.id != current_user.id %}
-            <form method="post" action="{{ url_for('admin.toggle_user_active', uid=u.id) }}" class="inline">
+            <form method="post" action="{{ url_for('admin.user_toggle', uid=u.id) }}" class="inline">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button class="text-xs px-2 py-1 rounded-lg {% if u.is_active %}bg-yellow-700/50 text-yellow-300 hover:bg-yellow-700{% else %}bg-emerald-700/50 text-emerald-300 hover:bg-emerald-700{% endif %} transition">
                 {{ 'Desativar' if u.is_active else 'Ativar' }}
               </button>
             </form>
-            <form method="post" action="{{ url_for('admin.delete_user', uid=u.id) }}" class="inline"
+            <form method="post" action="{{ url_for('admin.user_delete', uid=u.id) }}" class="inline"
                   onsubmit="return confirm('Excluir usuário {{ u.username | e }}?')">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button class="text-xs px-2 py-1 rounded-lg bg-red-700/50 text-red-300 hover:bg-red-700 transition">Excluir</button>
@@ -96,13 +96,13 @@
     {% endif %}
     {% if u.id != current_user.id %}
     <div class="flex gap-2 pt-2 border-t border-white/8">
-      <form method="post" action="{{ url_for('admin.toggle_user_active', uid=u.id) }}" class="flex-1">
+      <form method="post" action="{{ url_for('admin.user_toggle', uid=u.id) }}" class="flex-1">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="w-full text-xs py-2 rounded-lg {% if u.is_active %}bg-yellow-700/50 text-yellow-300{% else %}bg-emerald-700/50 text-emerald-300{% endif %} transition">
           {{ 'Desativar' if u.is_active else 'Ativar' }}
         </button>
       </form>
-      <form method="post" action="{{ url_for('admin.delete_user', uid=u.id) }}" class="flex-1"
+      <form method="post" action="{{ url_for('admin.user_delete', uid=u.id) }}" class="flex-1"
             onsubmit="return confirm('Excluir {{ u.username | e }}?')">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <button class="w-full text-xs py-2 rounded-lg bg-red-700/50 text-red-300 transition">Excluir</button>
@@ -121,7 +121,7 @@
 <div id="newUserModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/60 px-4">
   <div class="bg-slate-800 border border-white/20 rounded-2xl p-6 w-full max-w-sm">
     <h2 class="text-base font-semibold text-white mb-4">Novo usuário</h2>
-    <form method="post" action="{{ url_for('admin.create_user') }}" class="space-y-3">
+    <form method="post" action="{{ url_for('admin.user_create') }}" class="space-y-3">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <div>
         <label class="block text-xs text-slate-400 mb-1">Usuário</label>
@@ -130,26 +130,10 @@
                       focus:outline-none focus:ring-2 focus:ring-teal-500/40">
       </div>
       <div>
-        <label class="block text-xs text-slate-400 mb-1">E-mail</label>
-        <input type="email" name="email"
+        <label class="block text-xs text-slate-400 mb-1">Senha (mín. 12 caracteres)</label>
+        <input type="password" name="password" required minlength="12"
                class="w-full rounded-xl bg-white/10 border border-white/20 text-white px-3 py-2.5 text-sm
                       focus:outline-none focus:ring-2 focus:ring-teal-500/40">
-      </div>
-      <div>
-        <label class="block text-xs text-slate-400 mb-1">Senha</label>
-        <input type="password" name="password" required
-               class="w-full rounded-xl bg-white/10 border border-white/20 text-white px-3 py-2.5 text-sm
-                      focus:outline-none focus:ring-2 focus:ring-teal-500/40">
-      </div>
-      <div>
-        <label class="block text-xs text-slate-400 mb-1">Perfil</label>
-        <select name="role"
-                class="w-full rounded-xl bg-slate-700 border border-white/20 text-white px-3 py-2.5 text-sm
-                       focus:outline-none focus:ring-2 focus:ring-teal-500/40">
-          <option value="viewer">viewer</option>
-          <option value="admin">admin</option>
-          <option value="superadmin">superadmin</option>
-        </select>
       </div>
       <div class="flex gap-2 pt-1">
         <button type="button"
