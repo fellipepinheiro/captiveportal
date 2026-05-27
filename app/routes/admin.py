@@ -77,6 +77,8 @@ def login_post():
     password = request.form.get("password", "")
     user = AdminUser.query.filter_by(username=username, is_active=True).first()
     if user and user.check_password(password):
+        user.last_login = datetime.now(timezone.utc)
+        db.session.commit()
         login_user(user, remember=False)
         return redirect(url_for("admin.dashboard"))
     flash("Credenciais inválidas.", "error")
@@ -301,7 +303,6 @@ def integrations():
 @bp.post("/integracoes/salvar")
 @login_required
 def integrations_save():
-    # ── Webhook genérico ──
     webhook_url = request.form.get("webhook_url", "").strip()
     if webhook_url and not re.match(r'^https?://', webhook_url):
         flash("URL do webhook deve começar com http:// ou https://", "error")
@@ -310,7 +311,6 @@ def integrations_save():
     SiteConfig.set("webhook_secret",  request.form.get("webhook_secret", "").strip())
     SiteConfig.set("webhook_enabled", "true" if request.form.get("webhook_enabled") else "false")
 
-    # ── UniFi nativo ──
     unifi_host = request.form.get("unifi_host", "").strip().rstrip("/")
     if unifi_host and not re.match(r'^https?://', unifi_host):
         flash("Host UniFi deve começar com https://", "error")
@@ -338,7 +338,6 @@ def integrations_test():
     import requests as req_lib
     import warnings
 
-    # ── Teste webhook genérico ──
     url    = SiteConfig.get("webhook_url", "").strip()
     secret = SiteConfig.get("webhook_secret", "changeme")
 
@@ -380,13 +379,11 @@ def integrations_test():
 @login_required
 @limiter.limit("5 per minute")
 def integrations_test_unifi():
-    """Testa a conexão com a API do UniFi usando X-API-KEY."""
     import requests as req_lib
     import warnings
 
     host    = SiteConfig.get("unifi_host", "").strip().rstrip("/")
     api_key = SiteConfig.get("unifi_api_key", "").strip()
-    site    = SiteConfig.get("unifi_site", "default").strip() or "default"
 
     if not host or not api_key:
         flash("Configure o Host e a API Key do UniFi antes de testar.", "error")
@@ -397,18 +394,12 @@ def integrations_test_unifi():
     try:
         if not verify_ssl:
             warnings.filterwarnings("ignore", message="Unverified HTTPS request")
-
-        # Endpoint de listagem de sites — apenas para validar credenciais
         resp = req_lib.get(
             f"{host}/proxy/network/integration/v1/sites",
-            headers={
-                "X-API-KEY": api_key,
-                "Accept":    "application/json",
-            },
+            headers={"X-API-KEY": api_key, "Accept": "application/json"},
             timeout=8,
             verify=not verify_ssl,
         )
-
         if resp.status_code == 200:
             sites = resp.json().get("data", [])
             names = ", ".join(s.get("name", s.get("id", "?")) for s in sites[:5]) or "(nenhum)"
@@ -421,7 +412,6 @@ def integrations_test_unifi():
             flash(f"UniFi respondeu HTTP {resp.status_code}: {resp.text[:200]}", "error")
     except Exception as exc:
         flash(f"Falha ao conectar no UniFi: {exc}", "error")
-
     return redirect(url_for("admin.integrations"))
 
 
@@ -430,11 +420,6 @@ def unifi_authorize_client(
     client_ip: str | None = None,
     minutes: int | None = None,
 ) -> tuple[bool, str]:
-    """
-    Autoriza um cliente no Guest Portal do UniFi via API nativa.
-    Retorna (sucesso: bool, mensagem: str).
-    Chamada pela rota de autorização do portal (guest.py).
-    """
     import requests as req_lib
     import warnings
 
@@ -455,17 +440,13 @@ def unifi_authorize_client(
 
     verify_ssl = os.environ.get("UNIFI_VERIFY_SSL", "false").lower() != "true"
 
-    payload = {
-        "mac":     client_mac,
-        "minutes": minutes,
-    }
+    payload = {"mac": client_mac, "minutes": minutes}
     if client_ip:
         payload["ip"] = client_ip
 
     try:
         if not verify_ssl:
             warnings.filterwarnings("ignore", message="Unverified HTTPS request")
-
         resp = req_lib.post(
             f"{host}/proxy/network/integration/v1/sites/{site}/guests",
             json=payload,
@@ -477,12 +458,10 @@ def unifi_authorize_client(
             timeout=10,
             verify=not verify_ssl,
         )
-
         if resp.status_code in (200, 201):
             return True, f"Cliente {client_mac} autorizado no UniFi ({minutes} min)."
         else:
-            return False, f"UniFi recusou autorização: HTTP {resp.status_code} — {resp.text[:300]}"
-
+            return False, f"UniFi recusou: HTTP {resp.status_code} — {resp.text[:300]}"
     except Exception as exc:
         return False, f"Erro ao comunicar com UniFi: {exc}"
 
