@@ -68,48 +68,56 @@ def _compress_avatar(data: bytes) -> bytes:
     try:
         from PIL import Image, ImageOps
     except ImportError:
-        # Pillow não instalado – retorna dados originais
         return data
 
     img = Image.open(io.BytesIO(data))
-
-    # Corrige orientação EXIF (fotos de iPhone vêm rotacionadas)
     img = ImageOps.exif_transpose(img)
 
-    # Converte para RGB (remove alfa de PNGs, normaliza modos)
     if img.mode not in ("RGB", "L"):
         img = img.convert("RGB")
 
-    # Crop central quadrado antes de redimensionar (visual bonito em avatar circular)
     w, h = img.size
     side = min(w, h)
     left   = (w - side) // 2
     top    = (h - side) // 2
     img    = img.crop((left, top, left + side, top + side))
-
-    # Redimensiona para AVATAR_SIZE
-    img = img.resize(AVATAR_SIZE, Image.LANCZOS)
+    img    = img.resize(AVATAR_SIZE, Image.LANCZOS)
 
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=AVATAR_QUALITY, optimize=True)
     return buf.getvalue()
 
 
-# ─── Media (logo pública) ─────────────────────────────────────────────────────────────────────
+# ─── Media (logo pública + avatars) ─────────────────────────────────────────────────────────────
 
-@bp.get("/media/<path:filename>")
+@bp.get("/media/<filename>")
 @csrf.exempt
 def serve_media(filename):
+    """Serve arquivos de mídia: logo (UPLOAD_FOLDER) e avatars (AVATAR_FOLDER).
+
+    avatars são salvos como 'avatar_<id>.jpg' diretamente em AVATAR_FOLDER.
+    A URL gerada pelo model é /admin/media/avatar_<id>.jpg (sem subpasta).
+    """
     safe = secure_filename(filename)
-    # Suporta subpastas: avatars/
-    full_path = UPLOAD_FOLDER / safe
-    avatar_path = UPLOAD_FOLDER / "avatars" / safe
-    if (UPLOAD_FOLDER / "avatars" / Path(safe).name).exists():
-        return send_from_directory((UPLOAD_FOLDER / "avatars").resolve(), Path(safe).name)
-    return send_from_directory(UPLOAD_FOLDER.resolve(), safe)
+    if not safe:
+        from flask import abort
+        abort(404)
+
+    # Verifica primeiro na pasta de avatars
+    avatar_file = AVATAR_FOLDER / safe
+    if avatar_file.exists():
+        return send_from_directory(AVATAR_FOLDER.resolve(), safe)
+
+    # Depois na pasta raíz de uploads (logo, favicon etc.)
+    upload_file = UPLOAD_FOLDER / safe
+    if upload_file.exists():
+        return send_from_directory(UPLOAD_FOLDER.resolve(), safe)
+
+    from flask import abort
+    abort(404)
 
 
-# ─── Auth ─────────────────────────────────────────────────────────────────────────────
+# ─── Auth ───────────────────────────────────────────────────────────────────────────────────────
 
 @bp.get("/login")
 def login():
@@ -140,7 +148,7 @@ def logout():
     return redirect(url_for("admin.login"))
 
 
-# ─── Dashboard ──────────────────────────────────────────────────────────────────────
+# ─── Dashboard ───────────────────────────────────────────────────────────────────────────────
 
 @bp.get("/")
 @login_required
@@ -164,7 +172,7 @@ def dashboard():
     )
 
 
-# ─── Sessions ────────────────────────────────────────────────────────────────────
+# ─── Sessions ───────────────────────────────────────────────────────────────────────────────
 
 @bp.post("/sessoes/<int:sid>/apagar")
 @login_required
@@ -180,7 +188,7 @@ def session_delete(sid: int):
     return redirect(url_for("admin.dashboard"))
 
 
-# ─── Visitors ────────────────────────────────────────────────────────────────────
+# ─── Visitors ───────────────────────────────────────────────────────────────────────────────
 
 @bp.get("/visitantes")
 @login_required
@@ -255,7 +263,7 @@ def export_visitors():
     )
 
 
-# ─── Reports ──────────────────────────────────────────────────────────────────────
+# ─── Reports ─────────────────────────────────────────────────────────────────────────────────
 
 @bp.get("/relatorios")
 @login_required
@@ -346,7 +354,7 @@ def reports_data():
     })
 
 
-# ─── Integrations ───────────────────────────────────────────────────────────────────
+# ─── Integrations ──────────────────────────────────────────────────────────────────────────────────
 
 @bp.get("/integracoes")
 @login_required
@@ -530,7 +538,7 @@ def unifi_authorize_client(
         return False, f"Erro ao comunicar com UniFi: {exc}"
 
 
-# ─── Appearance ────────────────────────────────────────────────────────────────────
+# ─── Appearance ───────────────────────────────────────────────────────────────────────────────────
 
 @bp.get("/aparencia")
 @login_required
@@ -631,7 +639,7 @@ def remove_logo():
     return redirect(url_for("admin.settings_appearance"))
 
 
-# ─── Admin Users ───────────────────────────────────────────────────────────────────
+# ─── Admin Users ──────────────────────────────────────────────────────────────────────────────────
 
 @bp.get("/usuarios")
 @login_required
@@ -703,7 +711,7 @@ def user_delete(uid: int):
     return redirect(url_for("admin.users"))
 
 
-# ─── My Profile ───────────────────────────────────────────────────────────────────
+# ─── My Profile ─────────────────────────────────────────────────────────────────────────────────
 
 @bp.get("/perfil")
 @login_required
@@ -767,12 +775,10 @@ def profile_avatar():
 
     data = file.read()
 
-    # Limite generoso antes da compressão (fotos iPhone ~12 MB)
     if len(data) > MAX_AVATAR_BYTES:
         flash("Imagem muito grande. Máximo 20 MB.", "error")
         return redirect(url_for("admin.profile"))
 
-    # Compacta e redimensiona via Pillow → JPEG 256x256 ≈ 20-50 KB
     try:
         compressed = _compress_avatar(data)
     except Exception:
