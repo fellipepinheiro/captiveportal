@@ -164,6 +164,22 @@ def dashboard():
     )
 
 
+# ─── Sessions ────────────────────────────────────────────────────────────────────
+
+@bp.post("/sessoes/<int:sid>/apagar")
+@login_required
+def session_delete(sid: int):
+    """Apaga uma sessão pending específica do dashboard."""
+    portal_session = PortalSession.query.get_or_404(sid)
+    if portal_session.authorized:
+        flash("Não é possível apagar uma sessão já autorizada.", "error")
+        return redirect(url_for("admin.dashboard"))
+    db.session.delete(portal_session)
+    db.session.commit()
+    flash("Sessão pendente removida.", "success")
+    return redirect(url_for("admin.dashboard"))
+
+
 # ─── Visitors ────────────────────────────────────────────────────────────────────
 
 @bp.get("/visitantes")
