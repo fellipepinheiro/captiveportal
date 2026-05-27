@@ -88,6 +88,7 @@
             <form method="post"
                   action="{{ url_for('admin.session_delete', sid=s.id) }}"
                   onsubmit="return confirm('Remover esta sessão pendente?')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit"
                       title="Apagar sessão pendente"
                       class="inline-flex items-center justify-center h-7 w-7 rounded-lg bg-red-500/10 hover:bg-red-500/25 text-red-400 transition">
@@ -133,6 +134,7 @@
         <form method="post"
               action="{{ url_for('admin.session_delete', sid=s.id) }}"
               onsubmit="return confirm('Remover esta sessão pendente?')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit"
                   title="Apagar sessão pendente"
                   class="inline-flex items-center justify-center h-7 w-7 rounded-lg bg-red-500/10 hover:bg-red-500/25 text-red-400 transition">
