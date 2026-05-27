@@ -53,13 +53,10 @@ def _load_cfg() -> dict:
 
 
 # ─── Media (logo pública) ────────────────────────────────────────────────────
-# Serve o logo via /media/logo.png — roteado pelo nginx-proxy junto com /guest/
-# Evita o problema de /static/ não ser roteado pelo proxy reverso.
 
 @bp.get("/media/<path:filename>")
 @csrf.exempt
 def serve_media(filename):
-    """Serve arquivos de upload publicamente via /admin/media/<filename>."""
     safe = secure_filename(filename)
     return send_from_directory(UPLOAD_FOLDER.resolve(), safe)
 
@@ -288,20 +285,23 @@ def reports_data():
 @bp.get("/integracoes")
 @login_required
 def integrations():
-    webhook_url     = SiteConfig.get("webhook_url", "")
-    webhook_secret  = SiteConfig.get("webhook_secret", "")
-    webhook_enabled = SiteConfig.get("webhook_enabled", "false") == "true"
     return render_template(
         "admin/integrations.html",
-        webhook_url=webhook_url,
-        webhook_secret=webhook_secret,
-        webhook_enabled=webhook_enabled,
+        webhook_url=SiteConfig.get("webhook_url", ""),
+        webhook_secret=SiteConfig.get("webhook_secret", ""),
+        webhook_enabled=SiteConfig.get("webhook_enabled", "false") == "true",
+        unifi_enabled=SiteConfig.get("unifi_enabled", "false") == "true",
+        unifi_host=SiteConfig.get("unifi_host", "https://192.168.1.1"),
+        unifi_api_key=SiteConfig.get("unifi_api_key", ""),
+        unifi_site=SiteConfig.get("unifi_site", "default"),
+        unifi_minutes=SiteConfig.get("unifi_minutes", "480"),
     )
 
 
 @bp.post("/integracoes/salvar")
 @login_required
 def integrations_save():
+    # ── Webhook genérico ──
     webhook_url = request.form.get("webhook_url", "").strip()
     if webhook_url and not re.match(r'^https?://', webhook_url):
         flash("URL do webhook deve começar com http:// ou https://", "error")
@@ -309,6 +309,22 @@ def integrations_save():
     SiteConfig.set("webhook_url",     webhook_url)
     SiteConfig.set("webhook_secret",  request.form.get("webhook_secret", "").strip())
     SiteConfig.set("webhook_enabled", "true" if request.form.get("webhook_enabled") else "false")
+
+    # ── UniFi nativo ──
+    unifi_host = request.form.get("unifi_host", "").strip().rstrip("/")
+    if unifi_host and not re.match(r'^https?://', unifi_host):
+        flash("Host UniFi deve começar com https://", "error")
+        return redirect(url_for("admin.integrations"))
+    SiteConfig.set("unifi_enabled",  "true" if request.form.get("unifi_enabled") else "false")
+    SiteConfig.set("unifi_host",     unifi_host)
+    SiteConfig.set("unifi_api_key",  request.form.get("unifi_api_key", "").strip())
+    SiteConfig.set("unifi_site",     request.form.get("unifi_site", "default").strip() or "default")
+    try:
+        mins = max(1, min(int(request.form.get("unifi_minutes", "480")), 44640))
+    except (ValueError, TypeError):
+        mins = 480
+    SiteConfig.set("unifi_minutes",  str(mins))
+
     db.session.commit()
     flash("Configurações de integração salvas.", "success")
     return redirect(url_for("admin.integrations"))
@@ -320,25 +336,15 @@ def integrations_save():
 def integrations_test():
     import hashlib, hmac, json
     import requests as req_lib
-    import urllib.parse
     import warnings
 
+    # ── Teste webhook genérico ──
     url    = SiteConfig.get("webhook_url", "").strip()
     secret = SiteConfig.get("webhook_secret", "changeme")
 
     if not url:
         flash("Configure a URL do webhook primeiro.", "error")
         return redirect(url_for("admin.integrations"))
-
-    allow_private = os.environ.get("ALLOW_PRIVATE_WEBHOOK", "false").lower() == "true"
-    if not allow_private:
-        parsed   = urllib.parse.urlparse(url)
-        hostname = parsed.hostname or ""
-        _BLOCKED = ("localhost", "127.", "10.", "172.16.", "192.168.", "::1")
-        if any(hostname == b or hostname.startswith(b) for b in _BLOCKED):
-            flash("URL de destino não permitida (endereço interno). "
-                  "Defina ALLOW_PRIVATE_WEBHOOK=true no .env para ambientes on-premise.", "error")
-            return redirect(url_for("admin.integrations"))
 
     verify_ssl = os.environ.get("UNIFI_VERIFY_SSL", "true").lower() != "false"
 
@@ -357,17 +363,128 @@ def integrations_test():
             url,
             data=body,
             headers={
-                "Content-Type": "application/json",
+                "Content-Type":       "application/json",
                 "X-Webhook-Signature": f"sha256={sig}",
-                "X-Webhook-Event": "webhook_test",
+                "X-Webhook-Event":    "webhook_test",
             },
             timeout=8,
             verify=verify_ssl,
         )
-        flash(f"Webhook enviado com sucesso (HTTP {resp.status_code}).", "success")
+        flash(f"Webhook enviado (HTTP {resp.status_code}).", "success" if resp.ok else "error")
     except Exception as exc:
         flash(f"Falha ao enviar webhook: {exc}", "error")
     return redirect(url_for("admin.integrations"))
+
+
+@bp.post("/integracoes/testar-unifi")
+@login_required
+@limiter.limit("5 per minute")
+def integrations_test_unifi():
+    """Testa a conexão com a API do UniFi usando X-API-KEY."""
+    import requests as req_lib
+    import warnings
+
+    host    = SiteConfig.get("unifi_host", "").strip().rstrip("/")
+    api_key = SiteConfig.get("unifi_api_key", "").strip()
+    site    = SiteConfig.get("unifi_site", "default").strip() or "default"
+
+    if not host or not api_key:
+        flash("Configure o Host e a API Key do UniFi antes de testar.", "error")
+        return redirect(url_for("admin.integrations"))
+
+    verify_ssl = os.environ.get("UNIFI_VERIFY_SSL", "false").lower() != "true"
+
+    try:
+        if not verify_ssl:
+            warnings.filterwarnings("ignore", message="Unverified HTTPS request")
+
+        # Endpoint de listagem de sites — apenas para validar credenciais
+        resp = req_lib.get(
+            f"{host}/proxy/network/integration/v1/sites",
+            headers={
+                "X-API-KEY": api_key,
+                "Accept":    "application/json",
+            },
+            timeout=8,
+            verify=not verify_ssl,
+        )
+
+        if resp.status_code == 200:
+            sites = resp.json().get("data", [])
+            names = ", ".join(s.get("name", s.get("id", "?")) for s in sites[:5]) or "(nenhum)"
+            flash(f"Conexão UniFi OK! Sites encontrados: {names}", "success")
+        elif resp.status_code == 401:
+            flash("UniFi recusou a API Key (HTTP 401). Verifique se a chave está correta.", "error")
+        elif resp.status_code == 403:
+            flash("UniFi negou acesso (HTTP 403). Verifique as permissões da API Key.", "error")
+        else:
+            flash(f"UniFi respondeu HTTP {resp.status_code}: {resp.text[:200]}", "error")
+    except Exception as exc:
+        flash(f"Falha ao conectar no UniFi: {exc}", "error")
+
+    return redirect(url_for("admin.integrations"))
+
+
+def unifi_authorize_client(
+    client_mac: str,
+    client_ip: str | None = None,
+    minutes: int | None = None,
+) -> tuple[bool, str]:
+    """
+    Autoriza um cliente no Guest Portal do UniFi via API nativa.
+    Retorna (sucesso: bool, mensagem: str).
+    Chamada pela rota de autorização do portal (guest.py).
+    """
+    import requests as req_lib
+    import warnings
+
+    if SiteConfig.get("unifi_enabled", "false") != "true":
+        return False, "Integração UniFi desativada."
+
+    host    = SiteConfig.get("unifi_host", "").strip().rstrip("/")
+    api_key = SiteConfig.get("unifi_api_key", "").strip()
+    site    = SiteConfig.get("unifi_site", "default").strip() or "default"
+    if minutes is None:
+        try:
+            minutes = int(SiteConfig.get("unifi_minutes", "480"))
+        except (ValueError, TypeError):
+            minutes = 480
+
+    if not host or not api_key:
+        return False, "Host ou API Key do UniFi não configurados."
+
+    verify_ssl = os.environ.get("UNIFI_VERIFY_SSL", "false").lower() != "true"
+
+    payload = {
+        "mac":     client_mac,
+        "minutes": minutes,
+    }
+    if client_ip:
+        payload["ip"] = client_ip
+
+    try:
+        if not verify_ssl:
+            warnings.filterwarnings("ignore", message="Unverified HTTPS request")
+
+        resp = req_lib.post(
+            f"{host}/proxy/network/integration/v1/sites/{site}/guests",
+            json=payload,
+            headers={
+                "X-API-KEY":    api_key,
+                "Accept":       "application/json",
+                "Content-Type": "application/json",
+            },
+            timeout=10,
+            verify=not verify_ssl,
+        )
+
+        if resp.status_code in (200, 201):
+            return True, f"Cliente {client_mac} autorizado no UniFi ({minutes} min)."
+        else:
+            return False, f"UniFi recusou autorização: HTTP {resp.status_code} — {resp.text[:300]}"
+
+    except Exception as exc:
+        return False, f"Erro ao comunicar com UniFi: {exc}"
 
 
 # ─── Appearance ──────────────────────────────────────────────────────────────
@@ -453,7 +570,6 @@ def upload_logo():
     UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
     logo_path = UPLOAD_FOLDER / "logo.png"
     logo_path.write_bytes(data)
-    # Usa a rota /admin/media/ que é roteada pelo nginx-proxy
     SiteConfig.set("custom_logo_url", "/admin/media/logo.png")
     db.session.commit()
     flash("Logo atualizada com sucesso.", "success")
