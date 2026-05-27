@@ -80,7 +80,7 @@
             {% endif %}
           </td>
           <td class="px-4 py-3 text-xs text-slate-500 tabular-nums whitespace-nowrap">
-            {{ s.created_at.strftime('%d/%m %H:%M') if s.created_at else '—' }}
+            {{ s.created_at | localtime('%d/%m %H:%M') }}
           </td>
         </tr>
         {% else %}
@@ -102,7 +102,7 @@
           <p class="text-xs text-slate-600">Visitante anônimo</p>
         {% endif %}
         <p class="text-xs text-slate-600 mt-0.5 tabular-nums">
-          {{ s.created_at.strftime('%d/%m %H:%M') if s.created_at else '—' }}
+          {{ s.created_at | localtime('%d/%m %H:%M') }}
           {% if s.ssid %}<span class="text-slate-700"> · {{ s.ssid }}</span>{% endif %}
         </p>
       </div>

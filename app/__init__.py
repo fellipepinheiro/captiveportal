@@ -11,7 +11,6 @@ def create_app(config_name=None):
     app.config.from_object(get_config(config_name))
 
     # ProxyFix: extrai X-Real-IP / X-Forwarded-For enviados pelo nginx-proxy.
-    # x_for=1 significa confiar em 1 proxy na frente (o nginx-proxy do compose).
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
     # Inicializa extensoes
@@ -21,7 +20,7 @@ def create_app(config_name=None):
     limiter.init_app(app)
     login_manager.init_app(app)
 
-    # Headers de seguranca HTTP (CSP, HSTS, X-Frame-Options, etc.)
+    # Headers de seguranca HTTP
     from app.security import register_security_headers
     register_security_headers(app)
 
@@ -33,7 +32,22 @@ def create_app(config_name=None):
     app.register_blueprint(admin_bp, url_prefix='/admin')
     app.register_blueprint(health_bp)
 
-    # Context processor: injeta variaveis do portal em todos os templates
+    # Filtro Jinja2: converte datetime UTC -> America/Sao_Paulo
+    import zoneinfo
+    from datetime import timezone
+
+    _TZ_BR = zoneinfo.ZoneInfo("America/Sao_Paulo")
+
+    @app.template_filter("localtime")
+    def localtime_filter(dt, fmt="%d/%m/%Y %H:%M"):
+        """Converte um datetime UTC (naive ou aware) para America/Sao_Paulo."""
+        if dt is None:
+            return "—"
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt.astimezone(_TZ_BR).strftime(fmt)
+
+    # Context processor
     @app.context_processor
     def inject_portal_vars():
         try:
