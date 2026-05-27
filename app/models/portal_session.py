@@ -5,6 +5,11 @@ from app.extensions import db
 class PortalSession(db.Model):
     __tablename__ = "portal_sessions"
 
+    # Índice composto para queries da dashboard (authorized + created_at)
+    __table_args__ = (
+        db.Index("ix_portal_sessions_auth_created", "authorized", "created_at"),
+    )
+
     id          = db.Column(db.Integer, primary_key=True)
     client_mac  = db.Column(db.String(20), index=True)
     ap_mac      = db.Column(db.String(20))
