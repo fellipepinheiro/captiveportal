@@ -23,7 +23,9 @@ UPLOAD_FOLDER      = Path("app/static/uploads")
 AVATAR_FOLDER      = Path("app/static/uploads/avatars")
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
 MAX_LOGO_BYTES     = 2 * 1024 * 1024
-MAX_AVATAR_BYTES   = 1 * 1024 * 1024
+MAX_AVATAR_BYTES   = 20 * 1024 * 1024   # 20 MB – Pillow vai compactar depois
+AVATAR_SIZE        = (256, 256)          # px máximo do avatar salvo
+AVATAR_QUALITY     = 82                  # qualidade JPEG do avatar salvo
 HEX_COLOR_RE       = re.compile(r'^#[0-9A-Fa-f]{6}$')
 LOCAL_TZ           = ZoneInfo("America/Sao_Paulo")
 
@@ -54,6 +56,43 @@ def _load_cfg() -> dict:
             cfg[key] = val
     cfg['logo_title'] = SiteConfig.get('logo_title') or ''
     return cfg
+
+
+def _compress_avatar(data: bytes) -> bytes:
+    """
+    Recebe bytes de qualquer imagem (iPhone HEIC/JPEG, PNG, WEBP…),
+    redimensiona para no máximo AVATAR_SIZE mantendo proporção,
+    converte para JPEG e retorna os bytes compactados.
+    Resultado típico: 15–50 KB independente do arquivo original.
+    """
+    try:
+        from PIL import Image, ImageOps
+    except ImportError:
+        # Pillow não instalado – retorna dados originais
+        return data
+
+    img = Image.open(io.BytesIO(data))
+
+    # Corrige orientação EXIF (fotos de iPhone vêm rotacionadas)
+    img = ImageOps.exif_transpose(img)
+
+    # Converte para RGB (remove alfa de PNGs, normaliza modos)
+    if img.mode not in ("RGB", "L"):
+        img = img.convert("RGB")
+
+    # Crop central quadrado antes de redimensionar (visual bonito em avatar circular)
+    w, h = img.size
+    side = min(w, h)
+    left   = (w - side) // 2
+    top    = (h - side) // 2
+    img    = img.crop((left, top, left + side, top + side))
+
+    # Redimensiona para AVATAR_SIZE
+    img = img.resize(AVATAR_SIZE, Image.LANCZOS)
+
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=AVATAR_QUALITY, optimize=True)
+    return buf.getvalue()
 
 
 # ─── Media (logo pública) ───────────────────────────────────────────────────
@@ -681,19 +720,22 @@ def profile_avatar():
         return redirect(url_for("admin.profile"))
 
     data = file.read()
+
+    # Limite generoso antes da compressão (fotos iPhone ~12 MB)
     if len(data) > MAX_AVATAR_BYTES:
-        flash("Imagem muito grande. Máximo 1 MB.", "error")
+        flash("Imagem muito grande. Máximo 20 MB.", "error")
         return redirect(url_for("admin.profile"))
 
-    MAGIC = {b'\x89PNG', b'\xff\xd8\xff', b'RIFF'}
-    if not any(data.startswith(m) for m in MAGIC):
-        flash("Arquivo não reconhecido como imagem válida.", "error")
+    # Compacta e redimensiona via Pillow → JPEG 256x256 ≈ 20-50 KB
+    try:
+        compressed = _compress_avatar(data)
+    except Exception:
+        flash("Não foi possível processar a imagem. Tente outro arquivo.", "error")
         return redirect(url_for("admin.profile"))
 
     AVATAR_FOLDER.mkdir(parents=True, exist_ok=True)
-    ext = filename.rsplit(".", 1)[1].lower()
-    save_name = f"avatar_{current_user.id}.{ext}"
-    (AVATAR_FOLDER / save_name).write_bytes(data)
+    save_name = f"avatar_{current_user.id}.jpg"
+    (AVATAR_FOLDER / save_name).write_bytes(compressed)
     current_user.avatar_path = save_name
     db.session.commit()
     flash("Foto de perfil atualizada.", "success")
