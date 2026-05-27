@@ -1,4 +1,4 @@
-from flask import Blueprint, jsonify, redirect, url_for
+from flask import Blueprint, jsonify, redirect, request, url_for
 from app.extensions import db
 
 bp = Blueprint("health", __name__)
@@ -6,8 +6,11 @@ bp = Blueprint("health", __name__)
 
 @bp.get("/")
 def root():
-    """Redireciona a raiz do site para o portal de acesso Wi-Fi."""
-    return redirect(url_for("portal.entry"))
+    """Redireciona a raiz para o portal de acesso Wi-Fi, preservando query string."""
+    qs = request.query_string.decode()
+    base = url_for("portal.entry")
+    target = f"{base}?{qs}" if qs else base
+    return redirect(target)
 
 
 @bp.get("/health")
