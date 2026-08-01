@@ -13,8 +13,9 @@ from flask_login import login_user, logout_user, login_required, current_user
 from werkzeug.utils import secure_filename
 
 from app.extensions import db, limiter, csrf
-from app.models import Visitor, PortalSession, AdminUser
+from app.models import Visitor, PortalSession, AdminUser, Store
 from app.models.site_config import SiteConfig
+from app.services.unifi_api import get_unifi_for_store, UnifiAPIError
 
 bp = Blueprint("admin", __name__)
 
@@ -470,6 +471,134 @@ def remove_logo():
     db.session.commit()
     flash("Logo removida.", "success")
     return redirect(url_for("admin.settings_appearance"))
+
+
+# ─── Lojas (UDM Pro por loja) ─────────────────────────────────────────────────
+
+_SLUG_RE = re.compile(r'^[a-z0-9-]{2,80}$')
+
+
+@bp.get("/lojas")
+@login_required
+def stores():
+    all_stores = Store.query.order_by(Store.name).all()
+    return render_template("admin/stores.html", stores=all_stores)
+
+
+@bp.get("/lojas/nova")
+@login_required
+def store_new():
+    return render_template("admin/store_form.html", store=None)
+
+
+@bp.post("/lojas/nova")
+@login_required
+def store_create():
+    name = request.form.get("name", "").strip()[:120]
+    slug = request.form.get("slug", "").strip().lower() or Store.slugify(name)
+
+    if not name:
+        flash("Informe o nome da loja.", "error")
+        return redirect(url_for("admin.store_new"))
+    if not _SLUG_RE.match(slug):
+        flash("Slug inválido. Use apenas letras minúsculas, números e hífen.", "error")
+        return redirect(url_for("admin.store_new"))
+    if Store.query.filter_by(slug=slug).first():
+        flash(f"Já existe uma loja com o slug '{slug}'.", "error")
+        return redirect(url_for("admin.store_new"))
+
+    store = Store(
+        name=name,
+        slug=slug,
+        unifi_base_url=request.form.get("unifi_base_url", "").strip(),
+        unifi_api_key=request.form.get("unifi_api_key", "").strip(),
+        unifi_site_id=request.form.get("unifi_site_id", "").strip() or "default",
+        unifi_verify_ssl=bool(request.form.get("unifi_verify_ssl")),
+        session_minutes=request.form.get("session_minutes", type=int),
+        is_active=True,
+    )
+    db.session.add(store)
+    db.session.commit()
+    flash(f"Loja '{store.name}' criada. Configure o Hotspot Manager do UDM Pro dessa loja "
+          f"para usar /guest/s/{store.slug}/.", "success")
+    return redirect(url_for("admin.stores"))
+
+
+@bp.get("/lojas/<int:sid>/editar")
+@login_required
+def store_edit(sid: int):
+    store = Store.query.get_or_404(sid)
+    return render_template("admin/store_form.html", store=store)
+
+
+@bp.post("/lojas/<int:sid>/editar")
+@login_required
+def store_update(sid: int):
+    store = Store.query.get_or_404(sid)
+    name = request.form.get("name", "").strip()[:120]
+    slug = request.form.get("slug", "").strip().lower()
+
+    if not name:
+        flash("Informe o nome da loja.", "error")
+        return redirect(url_for("admin.store_edit", sid=sid))
+    if not _SLUG_RE.match(slug):
+        flash("Slug inválido. Use apenas letras minúsculas, números e hífen.", "error")
+        return redirect(url_for("admin.store_edit", sid=sid))
+    if Store.query.filter(Store.slug == slug, Store.id != sid).first():
+        flash(f"Já existe uma loja com o slug '{slug}'.", "error")
+        return redirect(url_for("admin.store_edit", sid=sid))
+
+    store.name             = name
+    store.slug             = slug
+    store.unifi_base_url   = request.form.get("unifi_base_url", "").strip()
+    store.unifi_site_id    = request.form.get("unifi_site_id", "").strip() or "default"
+    store.unifi_verify_ssl = bool(request.form.get("unifi_verify_ssl"))
+    store.session_minutes  = request.form.get("session_minutes", type=int)
+
+    new_key = request.form.get("unifi_api_key", "").strip()
+    if new_key:
+        store.unifi_api_key = new_key
+
+    db.session.commit()
+    flash(f"Loja '{store.name}' atualizada.", "success")
+    return redirect(url_for("admin.stores"))
+
+
+@bp.post("/lojas/<int:sid>/toggle")
+@login_required
+def store_toggle(sid: int):
+    store = Store.query.get_or_404(sid)
+    store.is_active = not store.is_active
+    db.session.commit()
+    status = "ativada" if store.is_active else "desativada"
+    flash(f"Loja '{store.name}' {status}.", "success")
+    return redirect(url_for("admin.stores"))
+
+
+@bp.post("/lojas/<int:sid>/excluir")
+@login_required
+def store_delete(sid: int):
+    store = Store.query.get_or_404(sid)
+    if PortalSession.query.filter_by(store_id=store.id).first():
+        flash(f"Loja '{store.name}' possui sessões registradas — desative-a em vez de excluir.", "error")
+        return redirect(url_for("admin.stores"))
+    db.session.delete(store)
+    db.session.commit()
+    flash(f"Loja '{store.name}' excluída.", "success")
+    return redirect(url_for("admin.stores"))
+
+
+@bp.post("/lojas/<int:sid>/testar")
+@login_required
+@limiter.limit("10 per minute")
+def store_test(sid: int):
+    store = Store.query.get_or_404(sid)
+    try:
+        unifi = get_unifi_for_store(store)
+        sites = unifi.get_sites()
+        return jsonify({"ok": True, "mock": unifi.mock, "sites": sites})
+    except UnifiAPIError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 502
 
 
 # ─── Admin Users ─────────────────────────────────────────────────────────────

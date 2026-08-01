@@ -1,11 +1,15 @@
+import logging
 from datetime import datetime, timezone
-from flask import request as flask_request
+from flask import request as flask_request, current_app
 from app.extensions import db
-from app.models import Visitor, PortalSession
+from app.models import Visitor, PortalSession, Store
 from app.models.portal_session import PortalSession as PS
+from app.services.unifi_api import get_unifi_for_store, UnifiAPIError
+
+logger = logging.getLogger(__name__)
 
 
-def create_pending_session(client_mac, ap_mac, ssid, redirect_url) -> PortalSession:
+def create_pending_session(client_mac, ap_mac, ssid, redirect_url, store: Store = None) -> PortalSession:
     ua = flask_request.headers.get("User-Agent", "")[:300]
     client_ip = flask_request.remote_addr
     device_type, os_hint = PS.detect_device(ua)
@@ -20,13 +24,33 @@ def create_pending_session(client_mac, ap_mac, ssid, redirect_url) -> PortalSess
         device_type  = device_type,
         os_hint      = os_hint,
         authorized   = False,
+        store_id     = store.id if store else None,
     )
     db.session.add(ps)
     db.session.commit()
     return ps
 
 
-def authorize_visitor(portal_session: PortalSession, visitor: Visitor) -> bool:
+def authorize_visitor(portal_session: PortalSession, visitor: Visitor, store: Store = None) -> bool:
+    site_id = (store.unifi_site_id if store and store.unifi_site_id
+               else current_app.config.get('UNIFI_SITE_ID', 'default'))
+    minutes = (store.session_minutes if store and store.session_minutes
+               else current_app.config.get('UNIFI_SESSION_MINUTES', 480))
+
+    try:
+        unifi = get_unifi_for_store(store)
+        client = unifi.find_client_by_mac(site_id, portal_session.client_mac)
+        if not client or not client.get('id'):
+            logger.warning(
+                '[UniFi] cliente nao encontrado no controlador (site=%s mac=%s loja=%s)',
+                site_id, portal_session.client_mac, store.slug if store else None,
+            )
+            return False
+        unifi.authorize_guest(site_id, client['id'], minutes=minutes)
+    except UnifiAPIError as exc:
+        logger.error('[UniFi] falha ao autorizar guest (loja=%s): %s', store.slug if store else None, exc)
+        return False
+
     try:
         portal_session.visitor_id    = visitor.id
         portal_session.authorized    = True

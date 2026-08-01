@@ -26,3 +26,15 @@ def validate_phone(phone: str, region: str = "BR") -> bool:
 
 def normalize_phone(phone: str) -> str:
     return re.sub(r"\D", "", phone)
+
+
+def normalize_cpf(cpf: str) -> str:
+    """Somente dígitos — a coluna visitors.cpf é VARCHAR(11)."""
+    return re.sub(r"\D", "", cpf)
+
+
+_EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+def validate_email(email: str) -> bool:
+    return bool(_EMAIL_RE.match(email))

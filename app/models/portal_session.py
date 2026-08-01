@@ -11,6 +11,7 @@ class PortalSession(db.Model):
     ssid        = db.Column(db.String(64))
     redirect_url= db.Column(db.String(512))
     visitor_id  = db.Column(db.Integer, db.ForeignKey("visitors.id"), nullable=True, index=True)
+    store_id    = db.Column(db.Integer, db.ForeignKey("stores.id"), nullable=True, index=True)
 
     # Rede / dispositivo
     client_ip   = db.Column(db.String(45))          # suporta IPv6
@@ -31,6 +32,7 @@ class PortalSession(db.Model):
                             onupdate=lambda: datetime.now(timezone.utc))
 
     visitor     = db.relationship("Visitor", backref="sessions", lazy="select")
+    store       = db.relationship("Store", backref="sessions", lazy="select")
 
     # ── helpers ────────────────────────────────────────────────────────────
     @property

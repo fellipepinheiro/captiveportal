@@ -16,7 +16,7 @@ class UnifiAPIError(Exception):
     pass
 
 
-def _build_session(api_key: str) -> requests.Session:
+def _build_session(api_key: str, verify_ssl: bool) -> requests.Session:
     """Cria sessao com retry automatico (3x para erros 5xx/502/503)."""
     session = requests.Session()
     session.headers.update({
@@ -24,6 +24,7 @@ def _build_session(api_key: str) -> requests.Session:
         'Content-Type': 'application/json',
         'Accept': 'application/json',
     })
+    session.verify = verify_ssl
     retry = Retry(
         total=3,
         backoff_factor=0.5,
@@ -36,11 +37,23 @@ def _build_session(api_key: str) -> requests.Session:
     return session
 
 
-def get_unifi() -> 'UnifiAPI':
-    """Factory que cria um UnifiAPI a partir das configs da app Flask atual."""
+def get_unifi_for_store(store=None) -> 'UnifiAPI':
+    """Factory que cria um UnifiAPI a partir das credenciais de uma Store.
+
+    Se `store` for None (loja não identificada), cai para as configs
+    globais da app (compatibilidade com instalacoes de loja unica).
+    """
+    if store is not None:
+        return UnifiAPI(
+            base_url=store.unifi_base_url or '',
+            api_key=store.unifi_api_key or '',
+            verify_ssl=bool(store.unifi_verify_ssl),
+            timeout=int(current_app.config.get('UNIFI_TIMEOUT', DEFAULT_TIMEOUT)),
+        )
     return UnifiAPI(
         base_url=current_app.config.get('UNIFI_BASE_URL', ''),
         api_key=current_app.config.get('UNIFI_API_KEY', ''),
+        verify_ssl=bool(current_app.config.get('UNIFI_VERIFY_SSL', False)),
         timeout=int(current_app.config.get('UNIFI_TIMEOUT', DEFAULT_TIMEOUT)),
     )
 
@@ -52,14 +65,14 @@ class UnifiAPI:
     retornam dados mockados para facilitar o desenvolvimento local.
     """
 
-    def __init__(self, base_url: str, api_key: str, timeout: int = DEFAULT_TIMEOUT):
+    def __init__(self, base_url: str, api_key: str, timeout: int = DEFAULT_TIMEOUT, verify_ssl: bool = True):
         self.base_url = (base_url or '').rstrip('/')
         self.timeout = timeout
         _placeholder = 'https://seu-unifi.exemplo.com'
         self.mock = DEV_MODE or not self.base_url or self.base_url == _placeholder
 
         if not self.mock:
-            self.session = _build_session(api_key)
+            self.session = _build_session(api_key, verify_ssl)
         else:
             logger.info('[UniFi] Modo MOCK ativo — nenhuma chamada real sera feita.')
 

@@ -38,6 +38,7 @@
       <thead>
         <tr class="text-xs text-slate-500 border-b border-white/5">
           <th class="text-left px-5 py-3 font-medium">Visitante</th>
+          <th class="text-left px-5 py-3 font-medium hidden md:table-cell">Loja</th>
           <th class="text-left px-5 py-3 font-medium hidden md:table-cell">SSID</th>
           <th class="text-left px-5 py-3 font-medium hidden lg:table-cell">Dispositivo</th>
           <th class="text-left px-5 py-3 font-medium hidden lg:table-cell">IP</th>
@@ -58,6 +59,9 @@
             {% else %}
             <span class="text-slate-600 text-xs">—</span>
             {% endif %}
+          </td>
+          <td class="px-5 py-3 hidden md:table-cell">
+            <span class="text-xs text-slate-400">{{ s.store.name if s.store else '—' }}</span>
           </td>
           <td class="px-5 py-3 hidden md:table-cell">
             <span class="text-xs text-slate-400">{{ s.ssid or '—' }}</span>
@@ -91,7 +95,7 @@
         </tr>
         {% else %}
         <tr>
-          <td colspan="7" class="px-5 py-10 text-center text-sm text-slate-600">
+          <td colspan="8" class="px-5 py-10 text-center text-sm text-slate-600">
             Nenhuma sessão registrada ainda.
           </td>
         </tr>
