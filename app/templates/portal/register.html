@@ -28,12 +28,12 @@
   <div class="flex items-center gap-2 text-sm">
     <svg class="h-3.5 w-3.5 shrink-0 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <rect width="18" height="14" x="3" y="5" rx="2"/><path d="M3 10h18"/></svg>
-    <span class="text-slate-300 truncate">{{ cpf }}</span>
+    <span class="text-slate-300 truncate">{{ cpf | cpf }}</span>
   </div>
   <div class="flex items-center gap-2 text-sm">
     <svg class="h-3.5 w-3.5 shrink-0 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></svg>
-    <span class="text-slate-300">{{ mobile }}</span>
+    <span class="text-slate-300">{{ mobile | telefone }}</span>
   </div>
 </div>
 

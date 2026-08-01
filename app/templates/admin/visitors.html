@@ -26,8 +26,9 @@
     <thead class="bg-white/10 text-white/60 uppercase text-xs">
       <tr>
         <th class="px-4 py-3 text-left">Nome</th>
-        <th class="px-4 py-3 text-left">E-mail</th>
+        <th class="px-4 py-3 text-left">CPF</th>
         <th class="px-4 py-3 text-left">Celular</th>
+        <th class="px-4 py-3 text-left">E-mail</th>
         <th class="px-4 py-3 text-center">Visitas</th>
         <th class="px-4 py-3 text-left">Último acesso</th>
         <th class="px-4 py-3 text-center">Status</th>
@@ -41,8 +42,9 @@
           {{ v.full_name }}
           {% if v.is_blocked %}<span class="ml-1 text-xs bg-red-700/60 text-red-200 px-1.5 py-0.5 rounded">bloqueado</span>{% endif %}
         </td>
-        <td class="px-4 py-3">{{ v.email }}</td>
-        <td class="px-4 py-3">{{ v.mobile }}</td>
+        <td class="px-4 py-3 tabular-nums">{{ v.cpf | cpf }}</td>
+        <td class="px-4 py-3 tabular-nums">{{ v.mobile | telefone }}</td>
+        <td class="px-4 py-3">{{ v.email or '—' }}</td>
         <td class="px-4 py-3 text-center tabular-nums">{{ v.visit_count or 0 }}</td>
         <td class="px-4 py-3 text-white/50 text-xs">
           {% if v.last_seen %}{{ v.last_seen.strftime('%d/%m/%Y %H:%M') }}{% else %}—{% endif %}

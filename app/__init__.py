@@ -33,6 +33,11 @@ def create_app(config_name=None):
     app.register_blueprint(admin_bp, url_prefix='/admin')
     app.register_blueprint(health_bp)
 
+    # Filtros de exibicao: CPF e telefone sao gravados so com digitos
+    from app.services.validator import format_cpf, format_phone
+    app.jinja_env.filters['cpf'] = format_cpf
+    app.jinja_env.filters['telefone'] = format_phone
+
     # Context processor: injeta variaveis do portal em todos os templates
     @app.context_processor
     def inject_portal_vars():

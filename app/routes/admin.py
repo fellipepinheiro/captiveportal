@@ -10,6 +10,7 @@ from flask import (
     url_for, flash, Response, jsonify, current_app, send_from_directory
 )
 from flask_login import login_user, logout_user, login_required, current_user
+from sqlalchemy import or_
 from werkzeug.utils import secure_filename
 
 from app.extensions import db, limiter, csrf
@@ -128,10 +129,16 @@ def visitors():
     show_blocked = request.args.get("blocked", "") == "1"
     query        = Visitor.query.order_by(Visitor.created_at.desc())
     if q:
-        query = query.filter(
-            (Visitor.full_name.ilike(f"%{q}%")) |
-            (Visitor.email.ilike(f"%{q}%"))
-        )
+        # CPF/telefone sao gravados so com digitos — busca pelo termo normalizado
+        digits = re.sub(r"\D", "", q)
+        filters = [
+            Visitor.full_name.ilike(f"%{q}%"),
+            Visitor.email.ilike(f"%{q}%"),
+        ]
+        if digits:
+            filters.append(Visitor.cpf.like(f"%{digits}%"))
+            filters.append(Visitor.mobile.like(f"%{digits}%"))
+        query = query.filter(or_(*filters))
     if show_blocked:
         query = query.filter(Visitor.is_blocked == True)
     pagination = query.paginate(page=page, per_page=25)
@@ -176,7 +183,7 @@ def export_visitors():
                 "Visitas", "Último acesso", "Bloqueado", "Cadastrado em"])
     for v in visitors_list:
         w.writerow([
-            v.id, v.full_name, v.email, v.mobile, v.cpf,
+            v.id, v.full_name, v.email or "", v.mobile, v.cpf,
             v.visit_count or 0,
             v.last_seen.isoformat() if v.last_seen else "",
             "Sim" if v.is_blocked else "Não",
