@@ -216,7 +216,7 @@ def visitor_detail(vid: int):
     sessoes = _extrato_sessoes(vid, inicio, fim)
 
     autorizadas = [s for s in sessoes if s.authorized_at]
-    minutos = sum(s.duration_minutes or 0 for s in autorizadas)
+    minutos = sum(s.duration or 0 for s in autorizadas)
     resumo = {
         "acessos":        len(sessoes),
         "autorizados":    len(autorizadas),
@@ -259,7 +259,7 @@ def visitor_detail_export(vid: int):
             s.ssid or "",
             fmt_datetime(s.authorized_at) if s.authorized_at else "",
             fmt_datetime(s.expired_at) if s.expired_at else "",
-            s.duration_minutes or 0,
+            s.duration if s.duration is not None else "",
             f"{s.device_type or ''} {s.os_hint or ''}".strip(),
             s.client_ip or "",
             s.client_mac or "",

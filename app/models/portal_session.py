@@ -48,6 +48,34 @@ class PortalSession(db.Model):
         """
         return self.authorized_at or self.created_at
 
+    @property
+    def duration(self):
+        """Minutos de conexao, calculados dos timestamps.
+
+        Nao usa duration_minutes como fonte: sessoes encerradas antes de o
+        calculo existir ficaram com o campo zerado, ainda que authorized_at
+        e expired_at registrem corretamente o intervalo. Os timestamps sao
+        a fonte confiavel; o campo serve de fallback.
+
+        Retorna None enquanto a sessao nao terminou.
+        """
+        inicio, fim = self.started_at, self.expired_at
+        if not (inicio and fim):
+            return None
+
+        if inicio.tzinfo is None:
+            inicio = inicio.replace(tzinfo=timezone.utc)
+        if fim.tzinfo is None:
+            fim = fim.replace(tzinfo=timezone.utc)
+
+        minutos = max(0, int((fim - inicio).total_seconds() // 60))
+        # Mesmo teto aplicado no encerramento: ninguem fica conectado alem
+        # do tempo de autorizacao concedido pela loja.
+        limite = self.store.session_minutes if self.store else None
+        if limite:
+            minutos = min(minutos, limite)
+        return minutos
+
     def close(self, when: datetime = None, max_minutes: int = None):
         """Encerra a sessao e calcula quanto tempo durou.
 

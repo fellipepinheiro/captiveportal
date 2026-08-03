@@ -100,10 +100,13 @@
             {% else %}<span class="text-slate-600">—</span>{% endif %}
           </td>
           <td class="px-5 py-3 text-xs text-slate-400 whitespace-nowrap">
-            {% if s.duration_minutes %}
-              {{ s.duration_minutes // 60 }}h {{ s.duration_minutes % 60 }}min
-            {% elif s.is_active %}<span class="text-slate-600">em curso</span>
-            {% else %}<span class="text-slate-600">—</span>{% endif %}
+            {% set dur = s.duration %}
+            {% if dur is none %}
+              {% if s.is_active %}<span class="text-slate-600">em curso</span>
+              {% else %}<span class="text-slate-600">—</span>{% endif %}
+            {% elif dur < 1 %}<span class="text-slate-500">menos de 1 min</span>
+            {% elif dur < 60 %}{{ dur }} min
+            {% else %}{{ dur // 60 }}h {{ dur % 60 }}min{% endif %}
           </td>
           <td class="px-5 py-3 text-xs text-slate-400 hidden md:table-cell">{{ s.store.name if s.store else '—' }}</td>
           <td class="px-5 py-3 text-xs text-slate-400 hidden lg:table-cell">{{ s.ssid or '—' }}</td>
