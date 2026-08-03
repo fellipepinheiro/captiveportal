@@ -81,12 +81,26 @@ def revoke_session(portal_session: PortalSession, store: Store = None) -> tuple[
     site_id = (store.unifi_site_id if store and store.unifi_site_id
                else current_app.config.get('UNIFI_SITE_ID', 'default'))
 
+    # A API responde 422 com este codigo quando o cliente ja nao tem
+    # autorizacao ativa. Para quem clicou em "derrubar" o objetivo ja esta
+    # cumprido, entao isso nao e erro — so faltava sincronizar a sessao.
+    JA_SEM_ACESSO = 'api.client.no-active-guest-authorization'
+
     try:
         unifi = get_unifi_for_store(store)
         client = unifi.find_client_by_mac(site_id, portal_session.client_mac)
         if client and client.get('id'):
-            unifi.revoke_guest(site_id, client['id'])
-            msg = 'Dispositivo desconectado.'
+            try:
+                unifi.revoke_guest(site_id, client['id'])
+                msg = 'Dispositivo desconectado.'
+            except UnifiAPIError as exc:
+                if exc.code != JA_SEM_ACESSO:
+                    raise
+                logger.info(
+                    '[UniFi] cliente %s ja estava sem autorizacao — sincronizando sessao',
+                    portal_session.client_mac,
+                )
+                msg = 'O dispositivo ja estava sem acesso; sessao encerrada.'
         else:
             logger.info(
                 '[UniFi] cliente %s nao esta mais no controlador — encerrando so localmente',

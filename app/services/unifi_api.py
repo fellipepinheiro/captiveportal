@@ -25,8 +25,37 @@ def _mock_override():
 
 
 class UnifiAPIError(Exception):
-    """Excecao base para erros da API UniFi."""
-    pass
+    """Erro da API UniFi.
+
+    `code` traz o identificador que a API devolve no corpo do erro
+    (ex: 'api.client.no-active-guest-authorization'), permitindo tratar
+    casos especificos sem depender do texto da mensagem.
+    """
+
+    def __init__(self, message: str, status_code: int = None, code: str = None):
+        super().__init__(message)
+        self.status_code = status_code
+        self.code = code
+
+
+def _api_error(exc: Exception, resp=None) -> UnifiAPIError:
+    """Monta um UnifiAPIError extraindo codigo e mensagem do corpo da resposta.
+
+    O texto padrao do requests ('422 Client Error: for url ...') nao diz o
+    que houve; a API detalha o motivo no corpo em JSON.
+    """
+    status = getattr(resp, 'status_code', None)
+    code = None
+    detalhe = str(exc)
+    if resp is not None:
+        try:
+            body = resp.json()
+            code = body.get('code')
+            if body.get('message'):
+                detalhe = f"{body['message']} (HTTP {status})"
+        except Exception:
+            pass
+    return UnifiAPIError(detalhe, status_code=status, code=code)
 
 
 def _build_session(api_key: str, verify_ssl: bool) -> requests.Session:
@@ -103,13 +132,15 @@ class UnifiAPI:
     def get_sites(self) -> list:
         if self.mock:
             return [{'id': 'mock-site-id', 'name': 'Mock Site'}]
+        resp = None
         try:
             resp = self.session.get(f'{self.base_url}/v1/sites', timeout=self.timeout)
             resp.raise_for_status()
             data = resp.json()
         except Exception as exc:
-            logger.error('[UniFi] get_sites falhou: %s', exc)
-            raise UnifiAPIError(str(exc)) from exc
+            err = _api_error(exc, resp)
+            logger.error('[UniFi] get_sites falhou: %s', err)
+            raise err from exc
 
         # A API v1 responde paginado: {"offset":..,"count":..,"data":[...]}
         if isinstance(data, list):
@@ -128,6 +159,7 @@ class UnifiAPI:
         # O filtro da API e case-sensitive e os MACs sao guardados em
         # minusculas — enviar em maiusculas devolve lista vazia.
         mac = (mac_address or '').lower()
+        resp = None
         try:
             resp = self.session.get(
                 f'{self.base_url}/v1/sites/{site_id}/clients',
@@ -137,8 +169,9 @@ class UnifiAPI:
             resp.raise_for_status()
             data = resp.json()
         except Exception as exc:
-            logger.error('[UniFi] find_client_by_mac falhou (mac=%s): %s', mac, exc)
-            raise UnifiAPIError(str(exc)) from exc
+            err = _api_error(exc, resp)
+            logger.error('[UniFi] find_client_by_mac falhou (mac=%s): %s', mac, err)
+            raise err from exc
 
         if isinstance(data, list):
             return data[0] if data else None
@@ -173,6 +206,7 @@ class UnifiAPI:
         if download_limit_kbps > 0:
             payload['downloadLimitKbps'] = download_limit_kbps
 
+        resp = None
         try:
             resp = self.session.post(
                 f'{self.base_url}/v1/sites/{site_id}/clients/{client_id}/actions',
@@ -183,8 +217,9 @@ class UnifiAPI:
             logger.info('[UniFi] Guest autorizado: site=%s client=%s minutes=%s', site_id, client_id, minutes)
             return resp.json() if resp.content else {'ok': True}
         except Exception as exc:
-            logger.error('[UniFi] authorize_guest falhou (client=%s): %s', client_id, exc)
-            raise UnifiAPIError(str(exc)) from exc
+            err = _api_error(exc, resp)
+            logger.error('[UniFi] authorize_guest falhou (client=%s): %s', client_id, err)
+            raise err from exc
 
     # ------------------------------------------------------------------
     # Revogacao (opcional)
@@ -195,6 +230,7 @@ class UnifiAPI:
             logger.debug('[MOCK UniFi] revoke_guest client=%s', client_id)
             return {'ok': True, 'mock': True}
 
+        resp = None
         try:
             resp = self.session.post(
                 f'{self.base_url}/v1/sites/{site_id}/clients/{client_id}/actions',
@@ -205,5 +241,6 @@ class UnifiAPI:
             logger.info('[UniFi] Guest revogado: site=%s client=%s', site_id, client_id)
             return resp.json() if resp.content else {'ok': True}
         except Exception as exc:
-            logger.error('[UniFi] revoke_guest falhou (client=%s): %s', client_id, exc)
-            raise UnifiAPIError(str(exc)) from exc
+            err = _api_error(exc, resp)
+            logger.error('[UniFi] revoke_guest falhou (client=%s): %s', client_id, err)
+            raise err from exc
