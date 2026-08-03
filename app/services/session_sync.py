@@ -13,6 +13,7 @@ duraram. Sem isso o painel mostra como "Autorizado" quem ja foi embora.
 import logging
 from datetime import datetime, timezone
 
+from flask import current_app
 from sqlalchemy import or_
 
 from app.extensions import db
@@ -86,19 +87,14 @@ def sync_store(store: Store, incluir_sem_loja: bool = False) -> tuple[int, str]:
         return 0, 'controlador indisponivel (ou modo mock) — nada encerrado'
 
     agora = datetime.now(timezone.utc)
+    limite = store.session_minutes or current_app.config.get('UNIFI_SESSION_MINUTES', 480)
     encerradas = 0
     for ps in abertas:
         mac = (ps.client_mac or '').lower()
         if mac in ativos:
             continue
 
-        ps.expired_at = agora
-        ps.authorized = False
-        inicio = ps.authorized_at or ps.created_at
-        if inicio:
-            if inicio.tzinfo is None:
-                inicio = inicio.replace(tzinfo=timezone.utc)
-            ps.duration_minutes = max(0, int((agora - inicio).total_seconds() // 60))
+        ps.close(agora, max_minutes=limite)
         encerradas += 1
 
     if encerradas:

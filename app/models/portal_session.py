@@ -39,6 +39,41 @@ class PortalSession(db.Model):
     def is_active(self):
         return self.authorized and self.expired_at is None
 
+    @property
+    def started_at(self):
+        """Inicio efetivo do acesso: quando foi autorizado.
+
+        Cai para created_at nas sessoes que nunca chegaram a ser
+        autorizadas (o visitante abriu o portal e desistiu).
+        """
+        return self.authorized_at or self.created_at
+
+    def close(self, when: datetime = None, max_minutes: int = None):
+        """Encerra a sessao e calcula quanto tempo durou.
+
+        Centralizado aqui porque o encerramento acontece em dois caminhos —
+        o botao "derrubar" do painel e a sincronizacao periodica — e a
+        duracao precisa ser gravada igual nos dois.
+
+        `max_minutes` limita a duracao ao tempo de autorizacao concedido.
+        A saida do visitante so e percebida na verificacao seguinte, entao
+        se a sincronizacao ficar parada (manutencao, controlador fora do ar)
+        a diferenca bruta viraria dias — mas a autorizacao do UniFi expira
+        sozinha em `max_minutes`, logo ninguem ficou conectado alem disso.
+        """
+        when = when or datetime.now(timezone.utc)
+        self.authorized = False
+        self.expired_at = when
+
+        inicio = self.started_at
+        if inicio:
+            if inicio.tzinfo is None:
+                inicio = inicio.replace(tzinfo=timezone.utc)
+            minutos = max(0, int((when - inicio).total_seconds() // 60))
+            if max_minutes:
+                minutos = min(minutos, max_minutes)
+            self.duration_minutes = minutos
+
     @classmethod
     def detect_device(cls, ua: str) -> tuple[str, str]:
         """Retorna (device_type, os_hint) a partir do User-Agent."""

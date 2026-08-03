@@ -112,8 +112,7 @@ def revoke_session(portal_session: PortalSession, store: Store = None) -> tuple[
         return False, f'Nao foi possivel desconectar no controlador: {exc}'
 
     try:
-        portal_session.authorized = False
-        portal_session.expired_at = datetime.now(timezone.utc)
+        portal_session.close()
         db.session.commit()
         return True, msg
     except Exception:

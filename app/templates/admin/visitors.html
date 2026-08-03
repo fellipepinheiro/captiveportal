@@ -39,7 +39,8 @@
       {% for v in pagination.items %}
       <tr class="hover:bg-white/5 transition-colors {% if v.is_blocked %}opacity-60{% endif %}">
         <td class="px-4 py-3 font-medium text-white">
-          {{ v.full_name }}
+          <a href="{{ url_for('admin.visitor_detail', vid=v.id) }}"
+             class="hover:text-teal-300 transition" title="Ver extrato de conexões">{{ v.full_name }}</a>
           {% if v.is_blocked %}<span class="ml-1 text-xs bg-red-700/60 text-red-200 px-1.5 py-0.5 rounded">bloqueado</span>{% endif %}
         </td>
         <td class="px-4 py-3 tabular-nums">{{ v.cpf | cpf }}</td>

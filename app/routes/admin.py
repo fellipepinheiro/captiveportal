@@ -2,7 +2,7 @@ import csv
 import io
 import os
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 
 from flask import (
@@ -17,7 +17,8 @@ from app.extensions import db, limiter, csrf
 from app.models import Visitor, PortalSession, AdminUser, Store, AuditLog
 from app.models.site_config import SiteConfig
 from app.services.unifi_api import get_unifi_for_store, UnifiAPIError
-from app.services.datetime_fmt import fmt_datetime
+from app.services.datetime_fmt import fmt_datetime, get_tz
+from app.services.validator import format_cpf
 
 bp = Blueprint("admin", __name__)
 
@@ -167,6 +168,112 @@ def visitors():
         pagination=pagination,
         q=q,
         show_blocked=show_blocked,
+    )
+
+
+def _periodo_do_request():
+    """Le de/ate da querystring. Padrao: ultimos 30 dias.
+
+    As datas chegam no fuso local (é o que o admin digita) e viram UTC,
+    que e como os timestamps estao gravados.
+    """
+    hoje_local = datetime.now(get_tz()).date()
+    try:
+        ate = date.fromisoformat(request.args.get("ate", "")) if request.args.get("ate") else hoje_local
+    except ValueError:
+        ate = hoje_local
+    try:
+        de = date.fromisoformat(request.args.get("de", "")) if request.args.get("de") else ate - timedelta(days=29)
+    except ValueError:
+        de = ate - timedelta(days=29)
+    if de > ate:
+        de, ate = ate, de
+
+    tz = get_tz()
+    inicio = datetime.combine(de, time.min, tzinfo=tz).astimezone(timezone.utc)
+    # 'ate' e inclusivo: vai ate o fim daquele dia
+    fim = datetime.combine(ate + timedelta(days=1), time.min, tzinfo=tz).astimezone(timezone.utc)
+    return de, ate, inicio, fim
+
+
+def _extrato_sessoes(visitor_id: int, inicio, fim):
+    """Sessoes do visitante no periodo, da mais recente para a mais antiga."""
+    return (
+        PortalSession.query
+        .filter(PortalSession.visitor_id == visitor_id)
+        .filter(PortalSession.created_at >= inicio, PortalSession.created_at < fim)
+        .order_by(PortalSession.created_at.desc())
+        .all()
+    )
+
+
+@bp.get("/visitantes/<int:vid>")
+@login_required
+def visitor_detail(vid: int):
+    """Extrato de conexoes/desconexoes do visitante no periodo."""
+    visitor = Visitor.query.get_or_404(vid)
+    de, ate, inicio, fim = _periodo_do_request()
+    sessoes = _extrato_sessoes(vid, inicio, fim)
+
+    autorizadas = [s for s in sessoes if s.authorized_at]
+    minutos = sum(s.duration_minutes or 0 for s in autorizadas)
+    resumo = {
+        "acessos":        len(sessoes),
+        "autorizados":    len(autorizadas),
+        "nao_concluidos": len(sessoes) - len(autorizadas),
+        "em_curso":       sum(1 for s in sessoes if s.is_active),
+        "minutos_total":  minutos,
+        "minutos_medio":  round(minutos / len(autorizadas)) if autorizadas else 0,
+    }
+    return render_template(
+        "admin/visitor_detail.html",
+        visitor=visitor, sessoes=sessoes, resumo=resumo,
+        de=de.isoformat(), ate=ate.isoformat(),
+    )
+
+
+@bp.get("/visitantes/<int:vid>/extrato.csv")
+@login_required
+def visitor_detail_export(vid: int):
+    visitor = Visitor.query.get_or_404(vid)
+    de, ate, inicio, fim = _periodo_do_request()
+    sessoes = _extrato_sessoes(vid, inicio, fim)
+
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Visitante", visitor.full_name])
+    w.writerow(["CPF", format_cpf(visitor.cpf)])
+    w.writerow(["Período", f"{de.strftime('%d/%m/%Y')} a {ate.strftime('%d/%m/%Y')}"])
+    w.writerow([])
+    w.writerow(["Loja", "Rede", "Conexão", "Desconexão", "Duração (min)",
+                "Dispositivo", "IP", "MAC", "Status"])
+    for s in sessoes:
+        if s.is_active:
+            status = "Em curso"
+        elif s.authorized_at:
+            status = "Encerrada"
+        else:
+            status = "Não concluída"
+        w.writerow([
+            s.store.name if s.store else "",
+            s.ssid or "",
+            fmt_datetime(s.authorized_at) if s.authorized_at else "",
+            fmt_datetime(s.expired_at) if s.expired_at else "",
+            s.duration_minutes or 0,
+            f"{s.device_type or ''} {s.os_hint or ''}".strip(),
+            s.client_ip or "",
+            s.client_mac or "",
+            status,
+        ])
+    buf.seek(0)
+    nome = re.sub(r"[^\w.-]", "_", visitor.full_name)[:40]
+    return Response(
+        buf.getvalue(),
+        mimetype="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=extrato_{nome}_{de}_{ate}.csv",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 

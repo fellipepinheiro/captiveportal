@@ -54,7 +54,9 @@
           <td class="px-5 py-3">
             {% if s.visitor %}
             <div>
-              <p class="font-medium text-slate-200 text-xs">{{ s.visitor.full_name }}</p>
+              <a href="{{ url_for('admin.visitor_detail', vid=s.visitor.id) }}"
+                 class="font-medium text-slate-200 text-xs hover:text-teal-300 transition"
+                 title="Ver extrato de conexões">{{ s.visitor.full_name }}</a>
               <p class="text-xs text-slate-500 truncate max-w-[160px]">
                 {{ s.visitor.email or s.visitor.mobile | telefone }}
               </p>
