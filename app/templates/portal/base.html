@@ -5,6 +5,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
   <title>{% block title %}{{ portal_title | default('Wi-Fi Visitantes') }}{% endblock %} — Wi-Fi</title>
+
+  {% if custom_logo_url %}
+  <link rel="icon" type="image/png" href="{{ custom_logo_url }}">
+  <link rel="shortcut icon" href="{{ custom_logo_url }}">
+  <link rel="apple-touch-icon" href="{{ custom_logo_url }}">
+  {% endif %}
+
   <!-- Tailwind servido localmente: o visitante ainda nao tem internet
        antes de ser autorizado, entao nenhum CDN externo carregaria. -->
   <script src="{{ url_for('static', filename='vendor/tailwind.js') }}"></script>

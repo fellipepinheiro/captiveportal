@@ -41,3 +41,37 @@ def register_commands(app):
             if not interval:
                 break
             time.sleep(interval)
+
+    @app.cli.command("cleanup-sessions")
+    @click.option("--pending-ttl", default=30, show_default=True,
+                  help="Minutos até remover sessões que nunca foram autorizadas.")
+    @click.option("--expired-ttl", default=365, show_default=True,
+                  help="Dias até purgar sessões encerradas. O Marco Civil (Art. 15) "
+                       "exige guardar registros de conexão por 1 ano.")
+    @with_appcontext
+    def cleanup_sessions(pending_ttl, expired_ttl):
+        """Remove sessões abandonadas e purga registros antigos de conexão."""
+        from datetime import datetime, timezone, timedelta
+        from app.models.portal_session import PortalSession
+
+        cutoff_pending = datetime.now(timezone.utc) - timedelta(minutes=pending_ttl)
+        cutoff_expired = datetime.now(timezone.utc) - timedelta(days=expired_ttl)
+
+        # Abandonadas = abriram o portal e nunca concluiram a identificacao.
+        # O criterio e authorized_at IS NULL, nao authorized == False: uma
+        # sessao encerrada tambem fica com authorized False, e apagar essas
+        # destruiria o historico de conexoes (o extrato do visitante e o
+        # registro que o Marco Civil obriga a guardar).
+        n_pending = PortalSession.query.filter(
+            PortalSession.authorized_at.is_(None),
+            PortalSession.created_at < cutoff_pending
+        ).delete(synchronize_session=False)
+
+        n_expired = PortalSession.query.filter(
+            PortalSession.expired_at.isnot(None),
+            PortalSession.expired_at < cutoff_expired
+        ).delete(synchronize_session=False)
+
+        db.session.commit()
+        click.echo(f"Limpeza concluída: {n_pending} abandonadas removidas, "
+                   f"{n_expired} registros antigos purgados.")

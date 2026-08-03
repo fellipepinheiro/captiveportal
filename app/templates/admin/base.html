@@ -1,47 +1,230 @@
 <!DOCTYPE html>
-<html lang="pt-BR" class="h-full">
+<html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>{% block title %}Admin{% endblock %} &mdash; {{ portal_title }}</title>
+  <!-- Tailwind servido localmente: nao depende de acesso a internet -->
   <script src="{{ url_for('static', filename='vendor/tailwind.js') }}"></script>
-    <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; }
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { height: 100%; overflow: hidden; }
+    body {
+      /* Fonte do sistema no lugar da Inter via CDN */
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+                   'Helvetica Neue', Arial, sans-serif;
+      display: flex;
+      flex-direction: row;
+      background: #020617;
+      color: #cbd5e1;
+    }
+
+
     ::-webkit-scrollbar { width: 5px; height: 5px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: #334155; border-radius: 9999px; }
+
     .nav-active {
       background-color: color-mix(in srgb, var(--accent) 18%, transparent) !important;
       color: var(--accent) !important;
       font-weight: 500;
     }
-    .nav-link:hover {
-      background-color: rgba(255,255,255,0.05);
-      color: #f1f5f9;
-    }
-    .brand-title { color: var(--accent); }
-    .btn-accent { background-color: var(--btn-color) !important; color: #fff !important; }
+    .nav-link:hover   { background-color: rgba(255,255,255,0.05); color: #f1f5f9; }
+    .btn-accent       { background-color: var(--btn-color) !important; color: #fff !important; }
     .btn-accent:hover { filter: brightness(1.15); }
-    .accent-text { color: var(--accent); }
-    .accent-border { border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
-    .accent-bg { background-color: color-mix(in srgb, var(--accent) 12%, transparent); }
+    .accent-text      { color: var(--accent); }
+    .accent-border    { border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+    .accent-bg        { background-color: color-mix(in srgb, var(--accent) 12%, transparent); }
+
+    /* ── Sidebar ── */
+    #sidebar {
+      width: 220px;
+      min-width: 220px;
+      height: 100vh;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      background: #0f172a;
+      border-right: 1px solid rgba(255,255,255,0.05);
+      transition: width 0.22s cubic-bezier(0.16,1,0.3,1),
+                  min-width 0.22s cubic-bezier(0.16,1,0.3,1);
+      flex-shrink: 0;
+      z-index: 30;
+    }
+
+    #sidebar .nav-label,
+    #sidebar .brand-text,
+    #sidebar .footer-text {
+      transition: opacity 0.15s ease;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    body.sidebar-collapsed #sidebar      { width: 56px; min-width: 56px; }
+    body.sidebar-collapsed .nav-label,
+    body.sidebar-collapsed .brand-text,
+    body.sidebar-collapsed .footer-text  { opacity: 0; width: 0; }
+    body.sidebar-collapsed .nav-link     { justify-content: center !important; padding-left: 0 !important; padding-right: 0 !important; }
+    body.sidebar-collapsed .brand-wrap   { justify-content: center !important; }
+    body.sidebar-collapsed .collapse-icon { transform: rotate(180deg); }
+    body.sidebar-collapsed .footer-link  { justify-content: center !important; padding-left: 0 !important; padding-right: 0 !important; }
+    body.sidebar-collapsed .user-card    { padding-left: 0 !important; padding-right: 0 !important; justify-content: center !important; }
+    body.sidebar-collapsed .user-card .user-info { opacity: 0; width: 0; overflow: hidden; }
+
+    .collapse-icon { transition: transform 0.22s cubic-bezier(0.16,1,0.3,1); }
+
+    #main-wrap {
+      flex: 1 1 0;
+      min-width: 0;
+      height: 100vh;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    #mobile-topbar { display: none; }
+    #overlay       { display: none; }
+
+    @media (max-width: 767px) {
+      body { flex-direction: column; overflow: auto; }
+
+      #mobile-topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        position: fixed;
+        top: 0; left: 0; right: 0;
+        height: 56px;
+        background: #0f172a;
+        border-bottom: 1px solid rgba(255,255,255,0.05);
+        padding: 0 1rem;
+        z-index: 60;
+        flex-shrink: 0;
+      }
+
+      #overlay {
+        display: block;
+        position: fixed;
+        inset: 0;
+        background: rgba(0,0,0,0.6);
+        backdrop-filter: blur(2px);
+        z-index: 40;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.25s ease;
+      }
+      #overlay.open { opacity: 1; pointer-events: auto; }
+
+      #sidebar {
+        position: fixed;
+        top: 0; left: 0;
+        height: 100dvh !important;
+        width: 240px !important;
+        min-width: 240px !important;
+        transform: translateX(-100%);
+        transition: transform 0.25s cubic-bezier(0.16,1,0.3,1);
+        z-index: 50;
+      }
+      #sidebar.open { transform: translateX(0); }
+
+      body.sidebar-collapsed .nav-label,
+      body.sidebar-collapsed .brand-text,
+      body.sidebar-collapsed .footer-text { opacity: 1 !important; width: auto !important; }
+      body.sidebar-collapsed .nav-link    { justify-content: flex-start !important; padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
+      body.sidebar-collapsed .footer-link { justify-content: flex-start !important; padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
+      body.sidebar-collapsed .user-card   { justify-content: flex-start !important; padding-left: 0.75rem !important; padding-right: 0.75rem !important; }
+      body.sidebar-collapsed .user-card .user-info { opacity: 1 !important; width: auto !important; }
+
+      #collapse-btn { display: none !important; }
+
+      #main-wrap {
+        height: auto;
+        min-height: calc(100dvh - 56px);
+        margin-top: 56px;
+        overflow: visible;
+      }
+    }
   </style>
 </head>
-<body class="min-h-full bg-slate-950 text-slate-200 flex"
-      style="--accent: {{ portal_accent }}; --btn-color: {{ portal_btn_color }};">
+<body style="--accent: {{ portal_accent }}; --btn-color: {{ portal_btn_color }};">
 
-  <!-- Sidebar -->
-  <aside class="w-56 min-h-screen bg-slate-900 border-r border-white/5 flex flex-col shrink-0">
-    <div class="px-5 py-5 border-b border-white/5">
+  <!-- ════ MOBILE TOP BAR ════ -->
+  <header id="mobile-topbar">
+    <button id="menu-btn" aria-label="Abrir menu"
+            style="background:none;border:none;cursor:pointer;color:#94a3b8;
+                   display:flex;align-items:center;justify-content:center;
+                   width:36px;height:36px;border-radius:8px;">
+      <svg id="icon-ham" width="20" height="20" fill="none" stroke="currentColor"
+           stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/>
+      </svg>
+      <svg id="icon-x" width="20" height="20" fill="none" stroke="currentColor"
+           stroke-width="2" viewBox="0 0 24 24" style="display:none">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/>
+      </svg>
+    </button>
+
+    <span style="font-size:0.875rem;font-weight:600;color:var(--accent)">
       {% if custom_logo_url %}
-        <img src="{{ custom_logo_url }}" alt="Logo" class="h-8 object-contain mb-1" loading="lazy">
+        <img src="{{ custom_logo_url }}" alt="" style="height:28px;object-fit:contain" loading="lazy">
       {% else %}
-        <span class="brand-title font-bold text-lg">{{ portal_title }}</span>
+        {{ portal_title }}
       {% endif %}
-      <span class="block text-xs text-slate-500 mt-0.5">Administra&ccedil;&atilde;o</span>
+    </span>
+
+    <a href="{{ url_for('admin.logout') }}" aria-label="Sair"
+       style="color:#64748b;display:flex;align-items:center;justify-content:center;
+              width:36px;height:36px;border-radius:8px;text-decoration:none;">
+      <svg width="20" height="20" fill="none" stroke="currentColor"
+           stroke-width="2" viewBox="0 0 24 24">
+        <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
+        <polyline points="16 17 21 12 16 7"/>
+        <line x1="21" y1="12" x2="9" y2="12"/>
+      </svg>
+    </a>
+  </header>
+
+  <!-- ════ OVERLAY (mobile) ════ -->
+  <div id="overlay" onclick="closeSidebar()"></div>
+
+  <!-- ════ SIDEBAR ════ -->
+  <aside id="sidebar">
+
+    <!-- Brand + botão recolher -->
+    <div class="brand-wrap" style="display:flex;align-items:center;justify-content:space-between;
+                                   padding:1rem;border-bottom:1px solid rgba(255,255,255,0.05);
+                                   min-height:60px;flex-shrink:0;">
+      <div style="display:flex;align-items:center;gap:0.5rem;min-width:0;overflow:hidden">
+        {% if custom_logo_url %}
+          <img src="{{ custom_logo_url }}" alt="" style="height:28px;flex-shrink:0;object-fit:contain" loading="lazy">
+        {% endif %}
+        <div class="brand-text" style="min-width:0;overflow:hidden">
+          {% if not custom_logo_url %}
+            <span style="display:block;font-weight:700;font-size:0.9rem;
+                          white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+                          color:var(--accent)">{{ portal_title }}</span>
+          {% endif %}
+          <span style="display:block;font-size:0.7rem;color:#64748b">Administração</span>
+        </div>
+      </div>
+
+      <button id="collapse-btn" onclick="toggleCollapse()" aria-label="Recolher menu"
+              title="Recolher menu"
+              style="flex-shrink:0;background:none;border:none;cursor:pointer;
+                     color:#64748b;display:flex;align-items:center;justify-content:center;
+                     width:28px;height:28px;border-radius:6px;
+                     transition:background 0.15s,color 0.15s;"
+              onmouseover="this.style.background='rgba(255,255,255,0.06)';this.style.color='#cbd5e1'"
+              onmouseout="this.style.background='none';this.style.color='#64748b'">
+        <svg class="collapse-icon" width="16" height="16" fill="none" stroke="currentColor"
+             stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round"
+                d="M11 19l-7-7 7-7M18 19l-7-7 7-7"/>
+        </svg>
+      </button>
     </div>
 
-    <nav class="flex-1 px-3 py-4 space-y-0.5">
+    <!-- Navegação -->
+    <nav style="flex:1;padding:0.5rem;overflow-y:auto;">
       {% set nav_items = [
         ('admin.dashboard',           'Dashboard',    'M3 3h7v7H3zm0 11h7v7H3zm11-11h7v7h-7zm0 11h7v7h-7z'),
         ('admin.visitors',            'Visitantes',   'M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75M9 3a4 4 0 100 8 4 4 0 000-8z'),
@@ -53,47 +236,116 @@
       ] %}
       {% for endpoint, label, icon in nav_items %}
         {% set is_active = request.endpoint == endpoint or
-           (endpoint == 'admin.visitors' and request.endpoint in ('admin.visitor_block','admin.visitor_unblock','admin.visitor_detail')) or
-           (endpoint == 'admin.stores' and request.endpoint in ('admin.store_new','admin.store_edit')) %}
-        <a href="{{ url_for(endpoint) }}"
-           class="nav-link flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm text-slate-400 transition-colors
-                  {{ 'nav-active' if is_active else '' }}">
-          <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+           (endpoint == 'admin.visitors' and
+            request.endpoint in ('admin.visitor_block','admin.visitor_unblock','admin.visitor_detail')) or
+           (endpoint == 'admin.stores' and
+            request.endpoint in ('admin.store_new','admin.store_edit')) %}
+        <a href="{{ url_for(endpoint) }}" onclick="closeSidebar()" title="{{ label }}"
+           class="nav-link"
+           style="display:flex;align-items:center;gap:10px;
+                  padding:10px 12px;border-radius:10px;
+                  font-size:0.875rem;text-decoration:none;
+                  color:{% if is_active %}var(--accent){% else %}#94a3b8{% endif %};
+                  background:{% if is_active %}color-mix(in srgb,var(--accent) 18%,transparent){% else %}transparent{% endif %};
+                  font-weight:{% if is_active %}500{% else %}400{% endif %};
+                  margin-bottom:2px;transition:background 0.15s,color 0.15s;">
+          <svg style="width:16px;height:16px;flex-shrink:0" fill="none" stroke="currentColor"
+               stroke-width="2" viewBox="0 0 24 24">
             <path stroke-linecap="round" stroke-linejoin="round" d="{{ icon }}"/>
           </svg>
-          {{ label }}
+          <span class="nav-label">{{ label }}</span>
         </a>
       {% endfor %}
     </nav>
 
-    <div class="px-3 py-4 border-t border-white/5 space-y-0.5">
-      <a href="/guest/s/default/?id=aa:bb:cc:00:00:01&ap=00:00:00:00:00:01&ssid=Preview"
-         target="_blank"
-         class="nav-link flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-slate-500 transition-colors">
-        <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
-        </svg>
-        Preview do portal
+    <!-- Rodapé: usuário logado + preview + sair -->
+    <div style="padding:0.5rem;border-top:1px solid rgba(255,255,255,0.05);flex-shrink:0">
+
+      <!-- Card do usuário logado -->
+      {% if current_user.is_authenticated %}
+      <a href="{{ url_for('admin.profile') }}" onclick="closeSidebar()" title="Meu perfil"
+         class="user-card"
+         style="display:flex;align-items:center;gap:10px;
+                padding:8px 12px;border-radius:10px;
+                text-decoration:none;cursor:pointer;
+                transition:background 0.15s;
+                margin-bottom:4px;
+                {% if request.endpoint == 'admin.profile' %}background:color-mix(in srgb,var(--accent) 18%,transparent);{% endif %}"
+         onmouseover="this.style.background='rgba(255,255,255,0.06)'"
+         onmouseout="this.style.background='{% if request.endpoint == 'admin.profile' %}color-mix(in srgb,var(--accent) 18%,transparent){% else %}transparent{% endif %}'">
+        <!-- Avatar circular -->
+        <div style="flex-shrink:0;width:32px;height:32px;border-radius:50%;overflow:hidden;
+                    background:color-mix(in srgb,var(--accent) 12%,transparent);
+                    border:1.5px solid color-mix(in srgb,var(--accent) 30%,transparent);
+                    display:flex;align-items:center;justify-content:center;">
+          {% if current_user.avatar_url %}
+            <img src="{{ current_user.avatar_url }}" alt="" width="32" height="32"
+                 style="width:100%;height:100%;object-fit:cover" loading="lazy">
+          {% else %}
+            <span style="font-size:0.8rem;font-weight:700;color:var(--accent)">
+              {{ current_user.username[0].upper() }}
+            </span>
+          {% endif %}
+        </div>
+        <!-- Nome e role -->
+        <div class="user-info" style="min-width:0;overflow:hidden;transition:opacity 0.15s ease;">
+          <p style="font-size:0.8rem;font-weight:500;color:#e2e8f0;
+                    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
+            {{ current_user.display_name }}
+          </p>
+          <p style="font-size:0.68rem;color:#64748b;white-space:nowrap;">{{ current_user.role if current_user.role is defined else 'admin' }}</p>
+        </div>
       </a>
-      <a href="{{ url_for('admin.logout') }}"
-         class="flex items-center gap-2 px-3 py-2 rounded-xl text-sm text-slate-500 hover:bg-red-500/10 hover:text-red-400 transition-colors">
-        <svg class="w-4 h-4 shrink-0" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
-          <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/>
+      {% endif %}
+
+      <!-- Preview do portal -->
+      <a href="/guest/s/default/?id=aa:bb:cc:00:00:01&ap=00:00:00:00:00:01&ssid=Preview"
+         target="_blank" title="Preview do portal" class="footer-link"
+         style="display:flex;align-items:center;gap:10px;
+                padding:10px 12px;border-radius:10px;
+                font-size:0.875rem;text-decoration:none;color:#64748b;
+                transition:background 0.15s,color 0.15s;margin-bottom:2px"
+         onmouseover="this.style.background='rgba(255,255,255,0.05)';this.style.color='#94a3b8'"
+         onmouseout="this.style.background='transparent';this.style.color='#64748b'">
+        <svg style="width:16px;height:16px;flex-shrink:0" fill="none" stroke="currentColor"
+             stroke-width="2" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round"
+                d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"/>
         </svg>
-        Sair
+        <span class="footer-text">Preview do portal</span>
+      </a>
+
+      <!-- Sair -->
+      <a href="{{ url_for('admin.logout') }}" title="Sair" class="footer-link"
+         style="display:flex;align-items:center;gap:10px;
+                padding:10px 12px;border-radius:10px;
+                font-size:0.875rem;text-decoration:none;color:#64748b;
+                transition:background 0.15s,color 0.15s"
+         onmouseover="this.style.background='rgba(239,68,68,0.1)';this.style.color='#f87171'"
+         onmouseout="this.style.background='transparent';this.style.color='#64748b'">
+        <svg style="width:16px;height:16px;flex-shrink:0" fill="none" stroke="currentColor"
+             stroke-width="2" viewBox="0 0 24 24">
+          <path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/>
+          <polyline points="16 17 21 12 16 7"/>
+          <line x1="21" y1="12" x2="9" y2="12"/>
+        </svg>
+        <span class="footer-text">Sair</span>
       </a>
     </div>
   </aside>
 
-  <!-- Main -->
-  <main class="flex-1 overflow-auto p-6">
+  <!-- ════ MAIN ════ -->
+  <main id="main-wrap" style="padding:1.5rem;">
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
-        <div class="mb-4 space-y-2">
+        <div style="margin-bottom:1rem">
           {% for category, message in messages %}
-            <div class="rounded-xl px-4 py-3 text-sm
-              {% if category == 'error' %}bg-red-500/10 border border-red-500/20 text-red-400
-              {% else %}bg-emerald-500/10 border border-emerald-500/20 text-emerald-400{% endif %}">
+            <div style="border-radius:12px;padding:12px 16px;font-size:0.875rem;margin-bottom:8px;
+              {% if category == 'error' %}
+                background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);color:#fca5a5;
+              {% else %}
+                background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.2);color:#6ee7b7;
+              {% endif %}">
               {{ message }}
             </div>
           {% endfor %}
@@ -103,5 +355,48 @@
     {% block content %}{% endblock %}
   </main>
 
+  <script>
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('overlay');
+    const iconHam = document.getElementById('icon-ham');
+    const iconX   = document.getElementById('icon-x');
+    let isOpen    = false;
+
+    function toggleCollapse() {
+      const c = document.body.classList.toggle('sidebar-collapsed');
+      try { localStorage.setItem('sb_collapsed', c ? '1' : '0'); } catch(e){}
+    }
+    try {
+      if (localStorage.getItem('sb_collapsed') === '1')
+        document.body.classList.add('sidebar-collapsed');
+    } catch(e){}
+
+    function openSidebar() {
+      isOpen = true;
+      sidebar.classList.add('open');
+      overlay.classList.add('open');
+      iconHam.style.display = 'none';
+      iconX.style.display   = 'block';
+      document.body.style.overflow = 'hidden';
+    }
+    function closeSidebar() {
+      isOpen = false;
+      sidebar.classList.remove('open');
+      overlay.classList.remove('open');
+      iconHam.style.display = 'block';
+      iconX.style.display   = 'none';
+      document.body.style.overflow = '';
+    }
+
+    const menuBtn = document.getElementById('menu-btn');
+    if (menuBtn) menuBtn.addEventListener('click', () => isOpen ? closeSidebar() : openSidebar());
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Escape' && isOpen) closeSidebar();
+    });
+    window.matchMedia('(min-width: 768px)').addEventListener('change', e => {
+      if (e.matches) { closeSidebar(); document.body.style.overflow = ''; }
+    });
+  </script>
 </body>
 </html>

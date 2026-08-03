@@ -1,0 +1,137 @@
+{% extends 'admin/base_admin.html' %}
+{% block title %}Meu Perfil{% endblock %}
+{% block content %}
+
+<div class="max-w-lg mx-auto">
+  <h1 class="text-xl font-bold text-white mb-6">Meu perfil</h1>
+
+  <!-- Card avatar -->
+  <div class="bg-white/5 border border-white/10 rounded-2xl p-6 mb-4">
+    <p class="text-xs text-slate-400 font-medium mb-4 uppercase tracking-wider">Foto de perfil</p>
+    <div class="flex items-center gap-5">
+      <!-- Avatar preview -->
+      <div class="relative shrink-0">
+        {% if current_user.avatar_url %}
+          <img id="avatarPreview" src="{{ current_user.avatar_url }}" alt="Avatar"
+               class="w-20 h-20 rounded-full object-cover ring-2 ring-white/10"
+               width="80" height="80">
+        {% else %}
+          <div id="avatarPreview"
+               class="w-20 h-20 rounded-full accent-bg flex items-center justify-center ring-2 ring-white/10">
+            <span class="text-2xl font-bold accent-text">{{ current_user.username[0].upper() }}</span>
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="flex-1 space-y-2">
+        <!-- Upload form -->
+        <form method="post" action="{{ url_for('admin.profile_avatar') }}" enctype="multipart/form-data">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label class="flex items-center gap-2 cursor-pointer inline-flex px-3 py-2 rounded-xl
+                         bg-white/10 hover:bg-white/15 text-slate-200 text-xs font-medium transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+            </svg>
+            Escolher foto
+            <input type="file" name="avatar" accept="image/png,image/jpeg,image/webp"
+                   class="hidden" onchange="this.form.submit()">
+          </label>
+        </form>
+
+        {% if current_user.avatar_url %}
+        <form method="post" action="{{ url_for('admin.profile_avatar_remove') }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="text-xs text-red-400 hover:text-red-300 transition">Remover foto</button>
+        </form>
+        {% endif %}
+        <p class="text-xs text-slate-600">PNG, JPG ou WEBP · Máx. 20 MB</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Card dados -->
+  <div class="bg-white/5 border border-white/10 rounded-2xl p-6 mb-4">
+    <p class="text-xs text-slate-400 font-medium mb-4 uppercase tracking-wider">Informações pessoais</p>
+    <form method="post" action="{{ url_for('admin.profile_save') }}" class="space-y-4">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <!-- Username (somente leitura) -->
+      <div>
+        <label class="block text-xs text-slate-500 mb-1">Usuário (login)</label>
+        <input type="text" value="{{ current_user.username }}" disabled
+               class="w-full rounded-xl bg-white/5 border border-white/10 text-slate-500 px-3 py-2.5 text-sm cursor-not-allowed">
+      </div>
+
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">Nome completo</label>
+        <input type="text" name="full_name" value="{{ current_user.full_name or '' }}" maxlength="120"
+               placeholder="Ex: João Silva"
+               class="w-full rounded-xl bg-white/10 border border-white/20 text-white px-3 py-2.5 text-sm
+                      focus:outline-none focus:ring-2 focus:ring-teal-500/40">
+      </div>
+
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">E-mail</label>
+        <input type="email" name="email" value="{{ current_user.email or '' }}" maxlength="120"
+               placeholder="seu@email.com"
+               class="w-full rounded-xl bg-white/10 border border-white/20 text-white px-3 py-2.5 text-sm
+                      focus:outline-none focus:ring-2 focus:ring-teal-500/40">
+      </div>
+
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">Telefone</label>
+        <input type="tel" name="phone" value="{{ current_user.phone or '' }}" maxlength="30"
+               placeholder="(47) 99999-9999"
+               class="w-full rounded-xl bg-white/10 border border-white/20 text-white px-3 py-2.5 text-sm
+                      focus:outline-none focus:ring-2 focus:ring-teal-500/40">
+      </div>
+
+      <div class="pt-1">
+        <button type="submit"
+          class="w-full py-2.5 btn-accent rounded-xl text-sm font-semibold">Salvar alterações</button>
+      </div>
+    </form>
+  </div>
+
+  <!-- Card alterar senha -->
+  <div class="bg-white/5 border border-white/10 rounded-2xl p-6">
+    <p class="text-xs text-slate-400 font-medium mb-4 uppercase tracking-wider">Alterar senha</p>
+    <form method="post" action="{{ url_for('admin.profile_change_password') }}" class="space-y-4">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">Senha atual</label>
+        <input type="password" name="current_password" required autocomplete="current-password"
+               class="w-full rounded-xl bg-white/10 border border-white/20 text-white px-3 py-2.5 text-sm
+                      focus:outline-none focus:ring-2 focus:ring-teal-500/40"
+               placeholder="••••••••">
+      </div>
+
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">Nova senha</label>
+        <input type="password" name="new_password" required autocomplete="new-password"
+               minlength="12"
+               class="w-full rounded-xl bg-white/10 border border-white/20 text-white px-3 py-2.5 text-sm
+                      focus:outline-none focus:ring-2 focus:ring-teal-500/40"
+               placeholder="Mínimo 12 caracteres">
+      </div>
+
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">Confirmar nova senha</label>
+        <input type="password" name="confirm_password" required autocomplete="new-password"
+               minlength="12"
+               class="w-full rounded-xl bg-white/10 border border-white/20 text-white px-3 py-2.5 text-sm
+                      focus:outline-none focus:ring-2 focus:ring-teal-500/40"
+               placeholder="Repita a nova senha">
+      </div>
+
+      <div class="pt-1">
+        <button type="submit"
+          class="w-full py-2.5 rounded-xl text-sm font-semibold
+                 bg-white/10 hover:bg-white/15 text-slate-200 transition">Alterar senha</button>
+      </div>
+    </form>
+  </div>
+
+</div>
+{% endblock %}

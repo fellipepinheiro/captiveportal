@@ -42,7 +42,7 @@ class BaseConfig:
     PRIVACY_POLICY_URL  = env("PRIVACY_POLICY_URL", default="/politica-de-privacidade")
 
     # ── Upload ─────────────────────────────────────────────────────
-    MAX_CONTENT_LENGTH = 2 * 1024 * 1024                  # 2 MB — bloqueia uploads gigantes
+    MAX_CONTENT_LENGTH = env("MAX_CONTENT_LENGTH", default=20 * 1024 * 1024, cast=int)  # 20 MB default
 
 
 class DevelopmentConfig(BaseConfig):

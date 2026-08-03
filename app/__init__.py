@@ -11,7 +11,6 @@ def create_app(config_name=None):
     app.config.from_object(get_config(config_name))
 
     # ProxyFix: extrai X-Real-IP / X-Forwarded-For enviados pelo nginx-proxy.
-    # x_for=1 significa confiar em 1 proxy na frente (o nginx-proxy do compose).
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
     # Inicializa extensoes
@@ -21,7 +20,7 @@ def create_app(config_name=None):
     limiter.init_app(app)
     login_manager.init_app(app)
 
-    # Headers de seguranca HTTP (CSP, HSTS, X-Frame-Options, etc.)
+    # Headers de seguranca HTTP
     from app.security import register_security_headers
     register_security_headers(app)
 
@@ -38,11 +37,15 @@ def create_app(config_name=None):
     app.jinja_env.filters['cpf'] = format_cpf
     app.jinja_env.filters['telefone'] = format_phone
 
-    # Datas sao gravadas em UTC — converte para o fuso local ao exibir
+    # Datas sao gravadas em UTC — converte para o fuso local ao exibir.
+    # 'localtime' e mantido como alias (mesma assinatura) porque varios
+    # templates ja o usam; a diferenca e que o fuso agora vem de TIMEZONE
+    # em vez de ficar fixo em America/Sao_Paulo.
     from app.services.datetime_fmt import fmt_datetime, fmt_short, fmt_date
     app.jinja_env.filters['datahora'] = fmt_datetime
     app.jinja_env.filters['datahora_curta'] = fmt_short
     app.jinja_env.filters['data'] = fmt_date
+    app.jinja_env.filters['localtime'] = fmt_datetime
 
     # Context processor: injeta variaveis do portal em todos os templates
     @app.context_processor

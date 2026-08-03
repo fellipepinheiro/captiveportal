@@ -1,107 +1,227 @@
-{% extends 'admin/base.html' %}
-{% block title %}Usuários Admin{% endblock %}
+{% extends 'admin/base_admin.html' %}
+{% block title %}Usuários{% endblock %}
 {% block content %}
-<div class="mb-6">
-  <h1 class="text-xl font-semibold text-white">Usuários Administradores</h1>
-  <p class="text-sm text-slate-500 mt-0.5">Gerencie quem tem acesso ao painel.</p>
+
+<div class="flex flex-wrap items-center justify-between gap-3 mb-5">
+  <h1 class="text-xl font-bold text-white">Usuários</h1>
+  <button onclick="openModal('newUserModal')"
+          class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold text-white btn-accent">
+    <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/>
+    </svg>
+    Novo usuário
+  </button>
 </div>
 
-<!-- Criar usuário -->
-<div class="bg-slate-900 border border-white/5 rounded-2xl p-6 mb-6 max-w-md">
-  <h2 class="text-sm font-semibold text-slate-300 mb-4">Novo usuário</h2>
-  <form method="post" action="{{ url_for('admin.user_create') }}" class="space-y-3">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <div>
-      <label class="block text-xs text-slate-500 mb-1">Usuário</label>
-      <input type="text" name="username" required autocomplete="off"
-             class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-100
-                    placeholder-slate-600 focus:outline-none focus:border-teal-500/50 focus:ring-1 focus:ring-teal-500/30 transition">
-    </div>
-    <div>
-      <label class="block text-xs text-slate-500 mb-1">Senha (mín. 8 caracteres)</label>
-      <input type="password" name="password" required autocomplete="new-password"
-             class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-100
-                    placeholder-slate-600 focus:outline-none focus:border-teal-500/50 focus:ring-1 focus:ring-teal-500/30 transition">
-    </div>
-    <button type="submit" class="w-full rounded-xl py-2.5 text-sm font-semibold transition btn-accent">
-      Criar usuário
-    </button>
-  </form>
-</div>
-
-<!-- Lista -->
-<div class="bg-slate-900 border border-white/5 rounded-2xl overflow-hidden">
+<!-- Desktop: tabela -->
+<div class="hidden md:block bg-white/5 border border-white/10 rounded-2xl overflow-hidden">
   <table class="w-full text-sm">
     <thead class="border-b border-white/5">
       <tr class="text-xs text-slate-500">
-        <th class="px-4 py-3 text-left font-medium">Usuário</th>
-        <th class="px-4 py-3 text-left font-medium">Status</th>
-        <th class="px-4 py-3 text-left font-medium">Criado</th>
-        <th class="px-4 py-3 text-left font-medium">Último login</th>
-        <th class="px-4 py-3 text-left font-medium">Ações</th>
+        <th class="text-left px-5 py-3 font-medium">Usuário</th>
+        <th class="text-left px-5 py-3 font-medium">Perfil</th>
+        <th class="text-left px-5 py-3 font-medium">Último acesso</th>
+        <th class="text-center px-5 py-3 font-medium">Ações</th>
       </tr>
     </thead>
     <tbody class="divide-y divide-white/5">
       {% for u in users %}
       <tr class="hover:bg-white/3 transition">
-        <td class="px-4 py-3 font-medium text-slate-200">{{ u.username }}</td>
-        <td class="px-4 py-3">
-          {% if u.is_active %}
-            <span class="inline-flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2 py-0.5">
-              <span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span> Ativo
-            </span>
-          {% else %}
-            <span class="inline-flex items-center gap-1.5 text-xs text-slate-500 bg-white/5 border border-white/10 rounded-full px-2 py-0.5">
-              <span class="h-1.5 w-1.5 rounded-full bg-slate-600"></span> Inativo
-            </span>
-          {% endif %}
+        <td class="px-5 py-3">
+          <div class="flex items-center gap-3">
+            <div class="h-8 w-8 rounded-full accent-bg flex items-center justify-center shrink-0">
+              <span class="text-xs font-bold accent-text">{{ u.username[0].upper() }}</span>
+            </div>
+            <div>
+              <p class="font-medium text-slate-200 text-sm">{{ u.username }}</p>
+              {% if u.email %}<p class="text-xs text-slate-500">{{ u.email }}</p>{% endif %}
+            </div>
+          </div>
         </td>
-        <td class="px-4 py-3 text-slate-500 text-xs">{{ u.created_at | data }}</td>
-        <td class="px-4 py-3 text-slate-500 text-xs">
-          {{ (u.last_login | datahora) if u.last_login else 'nunca' }}
+        <td class="px-5 py-3">
+          <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium
+            {% if u.role == 'superadmin' %}bg-purple-500/15 text-purple-400
+            {% elif u.role == 'admin' %}bg-teal-500/15 text-teal-400
+            {% else %}bg-slate-500/15 text-slate-400{% endif %}">{{ u.role }}</span>
         </td>
-        <td class="px-4 py-3">
-          <div class="flex items-center gap-2">
-            <form method="post" action="{{ url_for('admin.user_toggle', uid=u.id) }}">
+        <td class="px-5 py-3 text-xs text-slate-400">
+          {{ u.last_login | datahora }}
+        </td>
+        <td class="px-5 py-3">
+          <div class="flex justify-center gap-1.5 flex-wrap">
+            {% if u.id != current_user.id %}
+            <!-- Trocar senha -->
+            <button onclick="openPasswordModal({{ u.id }}, '{{ u.username | e }}')"
+              class="text-xs px-2 py-1 rounded-lg bg-blue-700/50 text-blue-300 hover:bg-blue-700 transition">
+              Senha
+            </button>
+            <!-- Ativar / Desativar -->
+            <form method="post" action="{{ url_for('admin.user_toggle', uid=u.id) }}" class="inline">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit"
-                      class="text-xs px-2.5 py-1 rounded-lg border border-white/10 text-slate-400 hover:bg-white/10 transition
-                             {% if u.id == admin.id %}opacity-40 cursor-not-allowed{% endif %}"
-                      {% if u.id == admin.id %}disabled{% endif %}>
+              <button class="text-xs px-2 py-1 rounded-lg {% if u.is_active %}bg-yellow-700/50 text-yellow-300 hover:bg-yellow-700{% else %}bg-emerald-700/50 text-emerald-300 hover:bg-emerald-700{% endif %} transition">
                 {{ 'Desativar' if u.is_active else 'Ativar' }}
               </button>
             </form>
-            <button onclick="document.getElementById('pw-{{ u.id }}').classList.toggle('hidden')"
-                    class="text-xs px-2.5 py-1 rounded-lg border border-white/10 text-slate-400 hover:bg-white/10 transition">
-              Senha
-            </button>
-            <form method="post" action="{{ url_for('admin.user_delete', uid=u.id) }}"
-                  onsubmit="return confirm('Excluir usuário {{ u.username }}?')">
+            <!-- Excluir -->
+            <form method="post" action="{{ url_for('admin.user_delete', uid=u.id) }}" class="inline"
+                  onsubmit="return confirm('Excluir usuário {{ u.username | e }}?')">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button type="submit"
-                      class="text-xs px-2.5 py-1 rounded-lg border border-red-500/20 text-red-400 hover:bg-red-500/10 transition
-                             {% if u.id == admin.id %}opacity-40 cursor-not-allowed{% endif %}"
-                      {% if u.id == admin.id %}disabled{% endif %}>
-                Excluir
-              </button>
+              <button class="text-xs px-2 py-1 rounded-lg bg-red-700/50 text-red-300 hover:bg-red-700 transition">Excluir</button>
             </form>
+            {% else %}
+            <span class="text-xs text-slate-600">Conta atual</span>
+            {% endif %}
           </div>
-          <form method="post" action="{{ url_for('admin.user_password', uid=u.id) }}"
-                id="pw-{{ u.id }}" class="hidden mt-2 flex gap-2">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-            <input type="password" name="new_password" placeholder="Nova senha" minlength="8"
-                   class="flex-1 rounded-xl bg-white/5 border border-white/10 px-3 py-1.5 text-xs text-slate-100
-                          placeholder-slate-600 focus:outline-none focus:border-teal-500/50 transition">
-            <button type="submit" class="rounded-xl px-3 py-1.5 text-xs font-semibold transition btn-accent">
-              Salvar
-            </button>
-          </form>
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="5" class="px-4 py-8 text-center text-slate-600 text-sm">Nenhum usuário cadastrado.</td></tr>
+      <tr><td colspan="4" class="px-5 py-10 text-center text-slate-600 text-sm">Nenhum usuário cadastrado.</td></tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
+
+<!-- Mobile: cards -->
+<div class="md:hidden space-y-3">
+  {% for u in users %}
+  <div class="bg-white/5 border border-white/10 rounded-xl p-4">
+    <div class="flex items-center gap-3 mb-3">
+      <div class="h-9 w-9 rounded-full accent-bg flex items-center justify-center shrink-0">
+        <span class="text-sm font-bold accent-text">{{ u.username[0].upper() }}</span>
+      </div>
+      <div class="min-w-0 flex-1">
+        <p class="font-medium text-slate-200 text-sm">{{ u.username }}</p>
+        {% if u.email %}<p class="text-xs text-slate-500 truncate">{{ u.email }}</p>{% endif %}
+      </div>
+      <span class="shrink-0 text-xs rounded-full px-2 py-0.5
+        {% if u.role == 'superadmin' %}bg-purple-500/15 text-purple-400
+        {% elif u.role == 'admin' %}bg-teal-500/15 text-teal-400
+        {% else %}bg-slate-500/15 text-slate-400{% endif %}">{{ u.role }}</span>
+    </div>
+    <p class="text-xs text-slate-500 mb-3">
+      {% if u.last_login %}Último acesso: {{ u.last_login | datahora }}{% else %}Nunca acessou{% endif %}
+    </p>
+    {% if u.id != current_user.id %}
+    <div class="flex gap-2 pt-2 border-t border-white/8 flex-wrap">
+      <button onclick="openPasswordModal({{ u.id }}, '{{ u.username | e }}')"
+        class="flex-1 text-xs py-2 rounded-lg bg-blue-700/50 text-blue-300 transition">Senha</button>
+      <form method="post" action="{{ url_for('admin.user_toggle', uid=u.id) }}" class="flex-1">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="w-full text-xs py-2 rounded-lg {% if u.is_active %}bg-yellow-700/50 text-yellow-300{% else %}bg-emerald-700/50 text-emerald-300{% endif %} transition">
+          {{ 'Desativar' if u.is_active else 'Ativar' }}
+        </button>
+      </form>
+      <form method="post" action="{{ url_for('admin.user_delete', uid=u.id) }}" class="flex-1"
+            onsubmit="return confirm('Excluir {{ u.username | e }}?')">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="w-full text-xs py-2 rounded-lg bg-red-700/50 text-red-300 transition">Excluir</button>
+      </form>
+    </div>
+    {% else %}
+    <p class="text-xs text-slate-600 text-center pt-2 border-t border-white/8">Conta atual</p>
+    {% endif %}
+  </div>
+  {% else %}
+  <div class="text-center py-12 text-slate-600 text-sm">Nenhum usuário cadastrado.</div>
+  {% endfor %}
+</div>
+
+<!-- Modal novo usuário -->
+<div id="newUserModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/60 px-4">
+  <div class="bg-slate-800 border border-white/20 rounded-2xl p-6 w-full max-w-sm">
+    <h2 class="text-base font-semibold text-white mb-4">Novo usuário</h2>
+    <form method="post" action="{{ url_for('admin.user_create') }}" class="space-y-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">Usuário</label>
+        <input type="text" name="username" required
+               class="w-full rounded-xl bg-white/10 border border-white/20 text-white px-3 py-2.5 text-sm
+                      focus:outline-none focus:ring-2 focus:ring-teal-500/40">
+      </div>
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">Senha (mín. 12 caracteres)</label>
+        <input type="password" name="password" required minlength="12"
+               class="w-full rounded-xl bg-white/10 border border-white/20 text-white px-3 py-2.5 text-sm
+                      focus:outline-none focus:ring-2 focus:ring-teal-500/40">
+      </div>
+      <div class="flex gap-2 pt-1">
+        <button type="button" onclick="closeModal('newUserModal')"
+          class="flex-1 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-sm">Cancelar</button>
+        <button type="submit"
+          class="flex-1 py-2.5 btn-accent rounded-xl text-sm font-semibold">Criar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Modal trocar senha -->
+<div id="passwordModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/60 px-4">
+  <div class="bg-slate-800 border border-white/20 rounded-2xl p-6 w-full max-w-sm">
+    <h2 class="text-base font-semibold text-white mb-1">Trocar senha</h2>
+    <p class="text-xs text-slate-400 mb-4">Usuário: <span id="pwModalUsername" class="text-slate-200 font-medium"></span></p>
+    <form id="passwordForm" method="post" action="" class="space-y-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">Nova senha (mín. 12 caracteres)</label>
+        <input type="password" name="new_password" id="pwInput" required minlength="12"
+               class="w-full rounded-xl bg-white/10 border border-white/20 text-white px-3 py-2.5 text-sm
+                      focus:outline-none focus:ring-2 focus:ring-blue-500/40">
+      </div>
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">Confirmar senha</label>
+        <input type="password" id="pwConfirm" required minlength="12"
+               class="w-full rounded-xl bg-white/10 border border-white/20 text-white px-3 py-2.5 text-sm
+                      focus:outline-none focus:ring-2 focus:ring-blue-500/40">
+        <p id="pwMismatch" class="text-xs text-red-400 mt-1 hidden">As senhas não coincidem.</p>
+      </div>
+      <div class="flex gap-2 pt-1">
+        <button type="button" onclick="closeModal('passwordModal')"
+          class="flex-1 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-sm">Cancelar</button>
+        <button type="submit"
+          class="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-sm font-semibold">Salvar</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+function openModal(id) {
+  const el = document.getElementById(id);
+  el.classList.remove('hidden');
+  el.classList.add('flex');
+}
+function closeModal(id) {
+  const el = document.getElementById(id);
+  el.classList.add('hidden');
+  el.classList.remove('flex');
+}
+function openPasswordModal(uid, username) {
+  document.getElementById('pwModalUsername').textContent = username;
+  document.getElementById('passwordForm').action = '/admin/usuarios/' + uid + '/senha';
+  document.getElementById('pwInput').value = '';
+  document.getElementById('pwConfirm').value = '';
+  document.getElementById('pwMismatch').classList.add('hidden');
+  openModal('passwordModal');
+}
+
+// Validação de confirmação de senha no submit
+document.getElementById('passwordForm').addEventListener('submit', function(e) {
+  const pw  = document.getElementById('pwInput').value;
+  const cpw = document.getElementById('pwConfirm').value;
+  if (pw !== cpw) {
+    e.preventDefault();
+    document.getElementById('pwMismatch').classList.remove('hidden');
+  }
+});
+document.getElementById('pwConfirm').addEventListener('input', function() {
+  document.getElementById('pwMismatch').classList.add('hidden');
+});
+
+// Fechar ao clicar fora
+['newUserModal', 'passwordModal'].forEach(function(id) {
+  document.getElementById(id).addEventListener('click', function(e) {
+    if (e.target === this) closeModal(id);
+  });
+});
+</script>
 {% endblock %}

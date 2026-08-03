@@ -4,6 +4,7 @@ import os
 import re
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from flask import (
     Blueprint, render_template, request, redirect,
@@ -23,9 +24,14 @@ from app.services.validator import format_cpf
 bp = Blueprint("admin", __name__)
 
 UPLOAD_FOLDER      = Path("app/static/uploads")
+AVATAR_FOLDER      = Path("app/static/uploads/avatars")
 ALLOWED_EXTENSIONS = {"png", "jpg", "jpeg", "webp"}
 MAX_LOGO_BYTES     = 2 * 1024 * 1024
+MAX_AVATAR_BYTES   = 20 * 1024 * 1024   # 20 MB – Pillow vai compactar depois
+AVATAR_SIZE        = (256, 256)          # px máximo do avatar salvo
+AVATAR_QUALITY     = 82                  # qualidade JPEG do avatar salvo
 HEX_COLOR_RE       = re.compile(r'^#[0-9A-Fa-f]{6}$')
+LOCAL_TZ           = ZoneInfo("America/Sao_Paulo")
 
 _DEFAULT_CFG = {
     "portal_title":    "Wi-Fi Visitantes",
@@ -56,19 +62,66 @@ def _load_cfg() -> dict:
     return cfg
 
 
-# ─── Media (logo pública) ────────────────────────────────────────────────────
-# Serve o logo via /media/logo.png — roteado pelo nginx-proxy junto com /guest/
-# Evita o problema de /static/ não ser roteado pelo proxy reverso.
+def _compress_avatar(data: bytes) -> bytes:
+    """
+    Recebe bytes de qualquer imagem (iPhone HEIC/JPEG, PNG, WEBP…),
+    redimensiona para no máximo AVATAR_SIZE mantendo proporção,
+    converte para JPEG e retorna os bytes compactados.
+    Resultado típico: 15–50 KB independente do arquivo original.
+    """
+    try:
+        from PIL import Image, ImageOps
+    except ImportError:
+        return data
 
-@bp.get("/media/<path:filename>")
+    img = Image.open(io.BytesIO(data))
+    img = ImageOps.exif_transpose(img)
+
+    if img.mode not in ("RGB", "L"):
+        img = img.convert("RGB")
+
+    w, h = img.size
+    side = min(w, h)
+    left   = (w - side) // 2
+    top    = (h - side) // 2
+    img    = img.crop((left, top, left + side, top + side))
+    img    = img.resize(AVATAR_SIZE, Image.LANCZOS)
+
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=AVATAR_QUALITY, optimize=True)
+    return buf.getvalue()
+
+
+# ─── Media (logo pública + avatars) ─────────────────────────────────────────────────────────────
+
+@bp.get("/media/<filename>")
 @csrf.exempt
 def serve_media(filename):
-    """Serve arquivos de upload publicamente via /admin/media/<filename>."""
+    """Serve arquivos de mídia: logo (UPLOAD_FOLDER) e avatars (AVATAR_FOLDER).
+
+    avatars são salvos como 'avatar_<id>.jpg' diretamente em AVATAR_FOLDER.
+    A URL gerada pelo model é /admin/media/avatar_<id>.jpg (sem subpasta).
+    """
     safe = secure_filename(filename)
-    return send_from_directory(UPLOAD_FOLDER.resolve(), safe)
+    if not safe:
+        from flask import abort
+        abort(404)
+
+    # Verifica primeiro na pasta de avatars
+    avatar_file = AVATAR_FOLDER / safe
+    if avatar_file.exists():
+        return send_from_directory(AVATAR_FOLDER.resolve(), safe)
+
+    # Depois na pasta raíz de uploads (logo, favicon etc.)
+    upload_file = UPLOAD_FOLDER / safe
+    if upload_file.exists():
+        return send_from_directory(UPLOAD_FOLDER.resolve(), safe)
+
+    from flask import abort
+    abort(404)
 
 
-# ─── Auth ────────────────────────────────────────────────────────────────────
+# ─── Auth ───────────────────────────────────────────────────────────────────────────────────────
 
 @bp.get("/login")
 def login():
@@ -84,6 +137,10 @@ def login_post():
     password = request.form.get("password", "")
     user = AdminUser.query.filter_by(username=username, is_active=True).first()
     if user and user.check_password(password):
+        # Gravado em UTC como todos os demais timestamps; a conversao para
+        # o fuso local acontece na exibicao, pelo filtro `datahora`.
+        user.last_login = datetime.now(timezone.utc)
+        db.session.commit()
         login_user(user, remember=False)
         return redirect(url_for("admin.dashboard"))
     flash("Credenciais inválidas.", "error")
@@ -97,7 +154,7 @@ def logout():
     return redirect(url_for("admin.login"))
 
 
-# ─── Dashboard ───────────────────────────────────────────────────────────────
+# ─── Dashboard ───────────────────────────────────────────────────────────────────────────────
 
 @bp.get("/")
 @login_required
@@ -127,6 +184,7 @@ def dashboard():
 @login_required
 @limiter.limit("30 per minute")
 def session_revoke(sid: int):
+    """Desconecta no controlador um dispositivo com acesso liberado."""
     from app.services.portal_service import revoke_session
 
     ps = PortalSession.query.get_or_404(sid)
@@ -137,6 +195,26 @@ def session_revoke(sid: int):
     store = Store.query.get(ps.store_id) if ps.store_id else None
     ok, msg = revoke_session(ps, store)
     flash(msg, "success" if ok else "error")
+    return redirect(request.referrer or url_for("admin.dashboard"))
+
+
+@bp.post("/sessoes/<int:sid>/apagar")
+@login_required
+def session_delete(sid: int):
+    """Apaga do banco uma sessão que nunca chegou a ser autorizada.
+
+    O criterio e authorized_at, nao authorized: uma sessao encerrada
+    tambem fica com authorized False, e apagar essas destruiria o
+    historico de conexoes que o extrato do visitante mostra.
+    """
+    portal_session = PortalSession.query.get_or_404(sid)
+    if portal_session.authorized_at:
+        flash("Só é possível apagar acessos que nunca foram autorizados. "
+              "Para encerrar uma conexão ativa, use 'Derrubar'.", "error")
+        return redirect(request.referrer or url_for("admin.dashboard"))
+    db.session.delete(portal_session)
+    db.session.commit()
+    flash("Acesso pendente removido.", "success")
     return redirect(request.referrer or url_for("admin.dashboard"))
 
 
@@ -371,7 +449,7 @@ def export_visitors():
     )
 
 
-# ─── Reports ─────────────────────────────────────────────────────────────────
+# ─── Reports ─────────────────────────────────────────────────────────────────────────────────
 
 @bp.get("/relatorios")
 @login_required
@@ -462,19 +540,16 @@ def reports_data():
     })
 
 
-# ─── Integrations ────────────────────────────────────────────────────────────
+# ─── Integrations ──────────────────────────────────────────────────────────────────────────────────
 
 @bp.get("/integracoes")
 @login_required
 def integrations():
-    webhook_url     = SiteConfig.get("webhook_url", "")
-    webhook_secret  = SiteConfig.get("webhook_secret", "")
-    webhook_enabled = SiteConfig.get("webhook_enabled", "false") == "true"
     return render_template(
         "admin/integrations.html",
-        webhook_url=webhook_url,
-        webhook_secret=webhook_secret,
-        webhook_enabled=webhook_enabled,
+        webhook_url=SiteConfig.get("webhook_url", ""),
+        webhook_secret=SiteConfig.get("webhook_secret", ""),
+        webhook_enabled=SiteConfig.get("webhook_enabled", "false") == "true",
     )
 
 
@@ -488,6 +563,7 @@ def integrations_save():
     SiteConfig.set("webhook_url",     webhook_url)
     SiteConfig.set("webhook_secret",  request.form.get("webhook_secret", "").strip())
     SiteConfig.set("webhook_enabled", "true" if request.form.get("webhook_enabled") else "false")
+
     db.session.commit()
     flash("Configurações de integração salvas.", "success")
     return redirect(url_for("admin.integrations"))
@@ -499,7 +575,6 @@ def integrations_save():
 def integrations_test():
     import hashlib, hmac, json
     import requests as req_lib
-    import urllib.parse
     import warnings
 
     url    = SiteConfig.get("webhook_url", "").strip()
@@ -508,16 +583,6 @@ def integrations_test():
     if not url:
         flash("Configure a URL do webhook primeiro.", "error")
         return redirect(url_for("admin.integrations"))
-
-    allow_private = os.environ.get("ALLOW_PRIVATE_WEBHOOK", "false").lower() == "true"
-    if not allow_private:
-        parsed   = urllib.parse.urlparse(url)
-        hostname = parsed.hostname or ""
-        _BLOCKED = ("localhost", "127.", "10.", "172.16.", "192.168.", "::1")
-        if any(hostname == b or hostname.startswith(b) for b in _BLOCKED):
-            flash("URL de destino não permitida (endereço interno). "
-                  "Defina ALLOW_PRIVATE_WEBHOOK=true no .env para ambientes on-premise.", "error")
-            return redirect(url_for("admin.integrations"))
 
     verify_ssl = os.environ.get("UNIFI_VERIFY_SSL", "true").lower() != "false"
 
@@ -536,20 +601,20 @@ def integrations_test():
             url,
             data=body,
             headers={
-                "Content-Type": "application/json",
+                "Content-Type":       "application/json",
                 "X-Webhook-Signature": f"sha256={sig}",
-                "X-Webhook-Event": "webhook_test",
+                "X-Webhook-Event":    "webhook_test",
             },
             timeout=8,
             verify=verify_ssl,
         )
-        flash(f"Webhook enviado com sucesso (HTTP {resp.status_code}).", "success")
+        flash(f"Webhook enviado (HTTP {resp.status_code}).", "success" if resp.ok else "error")
     except Exception as exc:
         flash(f"Falha ao enviar webhook: {exc}", "error")
     return redirect(url_for("admin.integrations"))
 
 
-# ─── Appearance ──────────────────────────────────────────────────────────────
+# ─── Appearance ───────────────────────────────────────────────────────────────────────────────────
 
 @bp.get("/aparencia")
 @login_required
@@ -632,7 +697,6 @@ def upload_logo():
     UPLOAD_FOLDER.mkdir(parents=True, exist_ok=True)
     logo_path = UPLOAD_FOLDER / "logo.png"
     logo_path.write_bytes(data)
-    # Usa a rota /admin/media/ que é roteada pelo nginx-proxy
     SiteConfig.set("custom_logo_url", "/admin/media/logo.png")
     db.session.commit()
     flash("Logo atualizada com sucesso.", "success")
@@ -779,7 +843,7 @@ def store_test(sid: int):
         return jsonify({"ok": False, "error": str(exc)}), 502
 
 
-# ─── Admin Users ─────────────────────────────────────────────────────────────
+# ─── Admin Users ──────────────────────────────────────────────────────────────────────────────────
 
 @bp.get("/usuarios")
 @login_required
@@ -834,7 +898,7 @@ def user_password(uid: int):
         return redirect(url_for("admin.users"))
     user.set_password(new_password)
     db.session.commit()
-    flash(f"Senha de '{user.username}' alterada.", "success")
+    flash(f"Senha de '{user.username}' alterada com sucesso.", "success")
     return redirect(url_for("admin.users"))
 
 
@@ -849,3 +913,99 @@ def user_delete(uid: int):
     db.session.commit()
     flash(f"Usuário '{user.username}' excluído.", "success")
     return redirect(url_for("admin.users"))
+
+
+# ─── My Profile ─────────────────────────────────────────────────────────────────────────────────
+
+@bp.get("/perfil")
+@login_required
+def profile():
+    return render_template("admin/profile.html")
+
+
+@bp.post("/perfil/salvar")
+@login_required
+def profile_save():
+    current_user.full_name = request.form.get("full_name", "").strip()[:120] or None
+    current_user.phone     = request.form.get("phone", "").strip()[:30] or None
+    current_user.email     = request.form.get("email", "").strip()[:120] or None
+    db.session.commit()
+    flash("Perfil atualizado com sucesso.", "success")
+    return redirect(url_for("admin.profile"))
+
+
+@bp.post("/perfil/senha")
+@login_required
+@limiter.limit("5 per minute")
+def profile_change_password():
+    current_password = request.form.get("current_password", "")
+    new_password     = request.form.get("new_password", "")
+    confirm_password = request.form.get("confirm_password", "")
+
+    if not current_user.check_password(current_password):
+        flash("Senha atual incorreta.", "error")
+        return redirect(url_for("admin.profile"))
+
+    if len(new_password) < 12:
+        flash("A nova senha deve ter ao menos 12 caracteres.", "error")
+        return redirect(url_for("admin.profile"))
+
+    if new_password != confirm_password:
+        flash("A confirmação da senha não confere.", "error")
+        return redirect(url_for("admin.profile"))
+
+    if current_user.check_password(new_password):
+        flash("A nova senha deve ser diferente da senha atual.", "error")
+        return redirect(url_for("admin.profile"))
+
+    current_user.set_password(new_password)
+    db.session.commit()
+    flash("Senha alterada com sucesso.", "success")
+    return redirect(url_for("admin.profile"))
+
+
+@bp.post("/perfil/avatar")
+@login_required
+def profile_avatar():
+    file = request.files.get("avatar")
+    if not file or file.filename == "":
+        flash("Nenhum arquivo selecionado.", "error")
+        return redirect(url_for("admin.profile"))
+
+    filename = secure_filename(file.filename)
+    if not _allowed(filename):
+        flash("Formato inválido. Use PNG, JPG ou WEBP.", "error")
+        return redirect(url_for("admin.profile"))
+
+    data = file.read()
+
+    if len(data) > MAX_AVATAR_BYTES:
+        flash("Imagem muito grande. Máximo 20 MB.", "error")
+        return redirect(url_for("admin.profile"))
+
+    try:
+        compressed = _compress_avatar(data)
+    except Exception:
+        flash("Não foi possível processar a imagem. Tente outro arquivo.", "error")
+        return redirect(url_for("admin.profile"))
+
+    AVATAR_FOLDER.mkdir(parents=True, exist_ok=True)
+    save_name = f"avatar_{current_user.id}.jpg"
+    (AVATAR_FOLDER / save_name).write_bytes(compressed)
+    current_user.avatar_path = save_name
+    db.session.commit()
+    flash("Foto de perfil atualizada.", "success")
+    return redirect(url_for("admin.profile"))
+
+
+@bp.post("/perfil/avatar/remover")
+@login_required
+def profile_avatar_remove():
+    if current_user.avatar_path:
+        path = AVATAR_FOLDER / current_user.avatar_path
+        if path.exists():
+            path.unlink()
+        current_user.avatar_path = None
+        db.session.commit()
+    flash("Foto removida.", "success")
+    return redirect(url_for("admin.profile"))

@@ -1,7 +1,7 @@
 """stores (multi-loja / UDM Pro por loja) + email do visitante opcional
 
 Revision ID: 20260801_0005
-Revises: 20260526_0004
+Revises: 20260527_0005
 Create Date: 2026-08-01
 """
 import os
@@ -11,7 +11,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = '20260801_0005'
-down_revision = '20260526_0004'
+down_revision = '20260527_0005'
 branch_labels = None
 depends_on = None
 

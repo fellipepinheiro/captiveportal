@@ -1,27 +1,37 @@
 {% extends 'admin/base_admin.html' %}
 {% block title %}Visitantes{% endblock %}
 {% block content %}
-<div class="flex items-center justify-between mb-6">
-  <h1 class="text-2xl font-bold text-white">Visitantes</h1>
-  <div class="flex gap-2">
+
+<!-- Header -->
+<div class="flex flex-wrap items-center justify-between gap-3 mb-6">
+  <h1 class="text-xl font-bold text-white">Visitantes</h1>
+  <div class="flex gap-2 flex-wrap">
     <a href="{{ url_for('admin.visitors', blocked='1') }}"
-       class="px-3 py-2 rounded text-sm {% if show_blocked %}bg-red-700 text-white{% else %}bg-white/10 text-white/70 hover:bg-white/20{% endif %}">
+       class="px-3 py-2 rounded-lg text-sm
+              {% if show_blocked %}bg-red-700 text-white{% else %}bg-white/10 text-white/70 hover:bg-white/20{% endif %}">
       🚫 Bloqueados
     </a>
     <a href="{{ url_for('admin.export_visitors') }}"
-       class="px-3 py-2 bg-white/10 hover:bg-white/20 text-white text-sm rounded">⬇ Exportar CSV</a>
+       class="px-3 py-2 bg-white/10 hover:bg-white/20 text-white text-sm rounded-lg">
+      ⬇ Exportar CSV
+    </a>
   </div>
 </div>
 
 <!-- Busca -->
 <form method="get" class="mb-4 flex gap-2">
   <input type="text" name="q" value="{{ q }}" placeholder="Buscar por nome, CPF, celular ou e-mail…"
-    class="flex-1 rounded bg-white/10 border border-white/20 text-white px-3 py-2 text-sm placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-teal-400">
-  <button class="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded text-sm">Buscar</button>
-  {% if q %}<a href="{{ url_for('admin.visitors') }}" class="px-3 py-2 bg-white/10 text-white/70 rounded text-sm">Limpar</a>{% endif %}
+    class="flex-1 rounded-lg bg-white/10 border border-white/20 text-white px-3 py-2 text-sm
+           placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-teal-400 min-w-0">
+  <button class="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-lg text-sm shrink-0">Buscar</button>
+  {% if q %}
+    <a href="{{ url_for('admin.visitors') }}"
+       class="px-3 py-2 bg-white/10 text-white/70 rounded-lg text-sm shrink-0">Limpar</a>
+  {% endif %}
 </form>
 
-<div class="bg-white/5 rounded-xl overflow-hidden border border-white/10">
+<!-- ── Desktop table (hidden on mobile) ── -->
+<div class="hidden md:block bg-white/5 rounded-xl border border-white/10 overflow-x-auto">
   <table class="w-full text-sm text-white/80">
     <thead class="bg-white/10 text-white/60 uppercase text-xs">
       <tr>
@@ -41,7 +51,9 @@
         <td class="px-4 py-3 font-medium text-white">
           <a href="{{ url_for('admin.visitor_detail', vid=v.id) }}"
              class="hover:text-teal-300 transition" title="Ver extrato de conexões">{{ v.full_name }}</a>
-          {% if v.is_blocked %}<span class="ml-1 text-xs bg-red-700/60 text-red-200 px-1.5 py-0.5 rounded">bloqueado</span>{% endif %}
+          {% if v.is_blocked %}
+            <span class="ml-1 text-xs bg-red-700/60 text-red-200 px-1.5 py-0.5 rounded">bloqueado</span>
+          {% endif %}
         </td>
         <td class="px-4 py-3 tabular-nums">{{ v.cpf | cpf }}</td>
         <td class="px-4 py-3 tabular-nums">{{ v.mobile | telefone }}</td>
@@ -58,16 +70,16 @@
           {% endif %}
         </td>
         <td class="px-4 py-3 text-center">
-          <div class="flex items-center justify-center gap-1.5">
+          <div class="flex items-center justify-center gap-1.5 flex-wrap">
             {% if v.is_blocked %}
               <form method="post" action="{{ url_for('admin.visitor_unblock', vid=v.id) }}" class="inline">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button class="text-xs bg-emerald-700 hover:bg-emerald-600 text-white px-2 py-1 rounded"
-                  onclick="return confirm('Desbloquear {{ v.full_name }}?')">Desbloquear</button>
+                        onclick="return confirm('Desbloquear {{ v.full_name | e }}?')">Desbloquear</button>
               </form>
             {% else %}
               <button onclick="openBlockModal({{ v.id }}, '{{ v.full_name | e }}')"
-                class="text-xs bg-red-700 hover:bg-red-600 text-white px-2 py-1 rounded">Bloquear</button>
+                      class="text-xs bg-red-700 hover:bg-red-600 text-white px-2 py-1 rounded">Bloquear</button>
             {% endif %}
             <button onclick="openDeleteModal({{ v.id }}, '{{ v.full_name | e }}')"
               class="text-xs border border-red-500/30 text-red-300 hover:bg-red-500/10 px-2 py-1 rounded">
@@ -77,43 +89,105 @@
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="8" class="px-4 py-8 text-center text-white/40">Nenhum visitante encontrado.</td></tr>
+      <tr><td colspan="8" class="px-4 py-10 text-center text-white/40">Nenhum visitante encontrado.</td></tr>
       {% endfor %}
     </tbody>
   </table>
 </div>
 
+<!-- ── Mobile cards (hidden on desktop) ── -->
+<div class="md:hidden space-y-3">
+  {% for v in pagination.items %}
+  <div class="bg-white/5 border border-white/10 rounded-xl p-4 {% if v.is_blocked %}opacity-60{% endif %}">
+    <div class="flex items-start justify-between gap-2 mb-2">
+      <div class="min-w-0">
+        <a href="{{ url_for('admin.visitor_detail', vid=v.id) }}"
+           class="block font-semibold text-white text-sm truncate hover:text-teal-300 transition">
+          {{ v.full_name }}
+        </a>
+        <p class="text-xs text-slate-400 truncate">{{ v.cpf | cpf }}</p>
+      </div>
+      {% if v.is_blocked %}
+        <span class="shrink-0 text-xs bg-red-900/50 text-red-300 px-2 py-1 rounded-full">🚫 Bloqueado</span>
+      {% else %}
+        <span class="shrink-0 text-xs bg-emerald-900/40 text-emerald-300 px-2 py-1 rounded-full">✅ Ativo</span>
+      {% endif %}
+    </div>
+
+    <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-400 mb-3">
+      <div>
+        <span class="text-slate-600 uppercase tracking-wide text-[10px]">Celular</span>
+        <p class="text-slate-300">{{ v.mobile | telefone }}</p>
+      </div>
+      <div>
+        <span class="text-slate-600 uppercase tracking-wide text-[10px]">Visitas</span>
+        <p class="text-slate-300 tabular-nums">{{ v.visit_count or 0 }}</p>
+      </div>
+      <div class="col-span-2">
+        <span class="text-slate-600 uppercase tracking-wide text-[10px]">Último acesso</span>
+        <p class="text-slate-300">
+          {{ v.last_seen | datahora }}
+        </p>
+      </div>
+    </div>
+
+    <div class="flex gap-2 pt-2 border-t border-white/8">
+      {% if v.is_blocked %}
+        <form method="post" action="{{ url_for('admin.visitor_unblock', vid=v.id) }}" class="flex-1">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="w-full text-xs bg-emerald-700 hover:bg-emerald-600 text-white px-3 py-2 rounded-lg transition"
+                  onclick="return confirm('Desbloquear {{ v.full_name | e }}?')">Desbloquear</button>
+        </form>
+      {% else %}
+        <button onclick="openBlockModal({{ v.id }}, '{{ v.full_name | e }}')"
+                class="flex-1 text-xs bg-red-700 hover:bg-red-600 text-white px-3 py-2 rounded-lg transition">
+          Bloquear
+        </button>
+      {% endif %}
+      <button onclick="openDeleteModal({{ v.id }}, '{{ v.full_name | e }}')"
+              class="flex-1 text-xs border border-red-500/30 text-red-300 hover:bg-red-500/10 px-3 py-2 rounded-lg transition">
+        Excluir
+      </button>
+    </div>
+  </div>
+  {% else %}
+  <div class="text-center py-12 text-white/40 text-sm">Nenhum visitante encontrado.</div>
+  {% endfor %}
+</div>
+
 <!-- Paginação -->
 {% if pagination.pages > 1 %}
-<div class="flex justify-center gap-2 mt-4">
+<div class="flex justify-center flex-wrap gap-2 mt-5">
   {% for page_num in pagination.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
     {% if page_num %}
       <a href="{{ url_for('admin.visitors', page=page_num, q=q) }}"
-         class="px-3 py-1 rounded text-sm {% if page_num == pagination.page %}bg-teal-600 text-white{% else %}bg-white/10 text-white/70 hover:bg-white/20{% endif %}">
+         class="px-3 py-1.5 rounded-lg text-sm
+                {% if page_num == pagination.page %}bg-teal-600 text-white{% else %}bg-white/10 text-white/70 hover:bg-white/20{% endif %}">
         {{ page_num }}
       </a>
     {% else %}
-      <span class="px-3 py-1 text-white/30">…</span>
+      <span class="px-3 py-1.5 text-white/30">…</span>
     {% endif %}
   {% endfor %}
 </div>
 {% endif %}
 
 <!-- Modal bloquear -->
-<div id="blockModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/60">
-  <div class="bg-slate-800 border border-white/20 rounded-xl p-6 w-full max-w-md mx-4">
-    <h2 class="text-lg font-semibold text-white mb-1">Bloquear visitante</h2>
+<div id="blockModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/60 px-4">
+  <div class="bg-slate-800 border border-white/20 rounded-2xl p-6 w-full max-w-sm">
+    <h2 class="text-base font-semibold text-white mb-1">Bloquear visitante</h2>
     <p id="blockModalName" class="text-white/60 text-sm mb-4"></p>
     <form id="blockForm" method="post">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label class="block text-sm text-white/70 mb-1">Motivo do bloqueio</label>
       <input type="text" name="reason" placeholder="Ex: Uso indevido da rede"
-        class="w-full rounded bg-white/10 border border-white/20 text-white px-3 py-2 text-sm placeholder-white/40 mb-4 focus:outline-none focus:ring-2 focus:ring-red-500">
-      <div class="flex justify-end gap-2">
+        class="w-full rounded-xl bg-white/10 border border-white/20 text-white px-3 py-2.5 text-sm
+               placeholder-white/40 mb-4 focus:outline-none focus:ring-2 focus:ring-red-500">
+      <div class="flex gap-2">
         <button type="button" onclick="closeBlockModal()"
-          class="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded text-sm">Cancelar</button>
+          class="flex-1 py-2.5 bg-white/10 hover:bg-white/20 text-white rounded-xl text-sm">Cancelar</button>
         <button type="submit"
-          class="px-4 py-2 bg-red-700 hover:bg-red-600 text-white rounded text-sm">Confirmar bloqueio</button>
+          class="flex-1 py-2.5 bg-red-700 hover:bg-red-600 text-white rounded-xl text-sm font-semibold">Bloquear</button>
       </div>
     </form>
   </div>
@@ -161,12 +235,12 @@ document.getElementById('deleteModal').addEventListener('click', function(e) {
 function openBlockModal(vid, name) {
   document.getElementById('blockForm').action = `/admin/visitantes/${vid}/bloquear`;
   document.getElementById('blockModalName').textContent = name;
-  document.getElementById('blockModal').classList.remove('hidden');
-  document.getElementById('blockModal').classList.add('flex');
+  const m = document.getElementById('blockModal');
+  m.classList.remove('hidden'); m.classList.add('flex');
 }
 function closeBlockModal() {
-  document.getElementById('blockModal').classList.add('hidden');
-  document.getElementById('blockModal').classList.remove('flex');
+  const m = document.getElementById('blockModal');
+  m.classList.add('hidden'); m.classList.remove('flex');
 }
 document.getElementById('blockModal').addEventListener('click', function(e) {
   if (e.target === this) closeBlockModal();

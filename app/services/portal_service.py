@@ -65,6 +65,12 @@ def authorize_visitor(portal_session: PortalSession, visitor: Visitor, store: St
         except Exception:
             pass  # nunca bloqueia o fluxo principal
 
+        # A autorizacao no controlador ja foi feita acima, antes de marcar a
+        # sessao como autorizada. Nao ha uma segunda chamada aqui: a versao
+        # que existia usava POST /v1/sites/<site>/guests, endpoint que o
+        # controlador nao expoe (responde 404 "No endpoint POST ..."), entao
+        # falhava silenciosamente a cada acesso.
+
         return True
     except Exception:
         db.session.rollback()
