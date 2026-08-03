@@ -14,7 +14,7 @@ from sqlalchemy import or_
 from werkzeug.utils import secure_filename
 
 from app.extensions import db, limiter, csrf
-from app.models import Visitor, PortalSession, AdminUser, Store
+from app.models import Visitor, PortalSession, AdminUser, Store, AuditLog
 from app.models.site_config import SiteConfig
 from app.services.unifi_api import get_unifi_for_store, UnifiAPIError
 from app.services.datetime_fmt import fmt_datetime
@@ -120,6 +120,25 @@ def dashboard():
     )
 
 
+# ─── Sessões ─────────────────────────────────────────────────────────────────
+
+@bp.post("/sessoes/<int:sid>/derrubar")
+@login_required
+@limiter.limit("30 per minute")
+def session_revoke(sid: int):
+    from app.services.portal_service import revoke_session
+
+    ps = PortalSession.query.get_or_404(sid)
+    if not ps.authorized:
+        flash("Essa sessão já não está autorizada.", "error")
+        return redirect(request.referrer or url_for("admin.dashboard"))
+
+    store = Store.query.get(ps.store_id) if ps.store_id else None
+    ok, msg = revoke_session(ps, store)
+    flash(msg, "success" if ok else "error")
+    return redirect(request.referrer or url_for("admin.dashboard"))
+
+
 # ─── Visitors ────────────────────────────────────────────────────────────────
 
 @bp.get("/visitantes")
@@ -171,6 +190,50 @@ def visitor_unblock(vid: int):
     visitor.block_reason = None
     db.session.commit()
     flash(f"Visitante '{visitor.full_name}' desbloqueado.", "success")
+    return redirect(url_for("admin.visitors"))
+
+
+@bp.post("/visitantes/<int:vid>/excluir")
+@login_required
+def visitor_delete(vid: int):
+    """Exclui o cadastro do visitante (LGPD Art. 18, direito a exclusao).
+
+    Os registros de conexao (portal_sessions) NAO sao apagados: o Marco
+    Civil da Internet (Lei 12.965/2014, Art. 15) obriga a guarda desses
+    logs. Eles apenas deixam de apontar para o visitante, ficando
+    anonimos — sem nome, CPF, telefone ou e-mail associados.
+    """
+    visitor = Visitor.query.get_or_404(vid)
+    nome = visitor.full_name
+
+    try:
+        # Desvincula os logs em vez de apaga-los
+        PortalSession.query.filter_by(visitor_id=visitor.id).update(
+            {"visitor_id": None}, synchronize_session=False
+        )
+        AuditLog.query.filter_by(visitor_id=visitor.id).update(
+            {"visitor_id": None}, synchronize_session=False
+        )
+        # Consentimentos (consent_events) saem junto por cascade: sao dados
+        # pessoais e perdem o sentido sem o titular.
+        db.session.delete(visitor)
+
+        db.session.add(AuditLog(
+            event_type="VISITOR_DELETED",
+            status="SUCCESS",
+            payload=f"visitante '{nome}' (id={vid}) excluido pelo painel",
+            actor=current_user.username,
+            ip_address=request.remote_addr,
+        ))
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.error("falha ao excluir visitante %s: %s", vid, exc)
+        flash("Não foi possível excluir o cadastro.", "error")
+        return redirect(url_for("admin.visitors"))
+
+    flash(f"Cadastro de '{nome}' excluído. Os registros de acesso foram mantidos "
+          f"de forma anônima, conforme o Marco Civil da Internet.", "success")
     return redirect(url_for("admin.visitors"))
 
 

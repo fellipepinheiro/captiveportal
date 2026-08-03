@@ -45,6 +45,7 @@
           <th class="text-left px-5 py-3 font-medium hidden xl:table-cell">MAC</th>
           <th class="text-left px-5 py-3 font-medium">Status</th>
           <th class="text-left px-5 py-3 font-medium">Hora</th>
+          <th class="text-right px-5 py-3 font-medium">Ações</th>
         </tr>
       </thead>
       <tbody class="divide-y divide-white/5">
@@ -94,10 +95,26 @@
           <td class="px-5 py-3 text-xs text-slate-500">
             {{ s.created_at | datahora_curta }}
           </td>
+          <td class="px-5 py-3 text-right">
+            {% if s.authorized %}
+            <form method="post" action="{{ url_for('admin.session_revoke', sid=s.id) }}"
+                  class="inline"
+                  onsubmit="return confirm('Derrubar a conexão de {{ s.client_mac }}? O dispositivo perde o acesso e precisará se identificar novamente.')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit"
+                      class="text-xs px-2.5 py-1 rounded-lg border border-red-500/20 text-red-400
+                             hover:bg-red-500/10 transition whitespace-nowrap">
+                Derrubar
+              </button>
+            </form>
+            {% else %}
+            <span class="text-xs text-slate-600">—</span>
+            {% endif %}
+          </td>
         </tr>
         {% else %}
         <tr>
-          <td colspan="8" class="px-5 py-10 text-center text-sm text-slate-600">
+          <td colspan="9" class="px-5 py-10 text-center text-sm text-slate-600">
             Nenhuma sessão registrada ainda.
           </td>
         </tr>

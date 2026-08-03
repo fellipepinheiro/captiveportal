@@ -71,6 +71,42 @@ def authorize_visitor(portal_session: PortalSession, visitor: Visitor, store: St
         return False
 
 
+def revoke_session(portal_session: PortalSession, store: Store = None) -> tuple[bool, str]:
+    """Desautoriza o dispositivo no controlador e encerra a sessao.
+
+    Retorna (ok, mensagem). A sessao e encerrada localmente mesmo que o
+    cliente ja nao esteja no controlador (desconectou por conta propria),
+    porque nesse caso ele tambem nao tem mais acesso.
+    """
+    site_id = (store.unifi_site_id if store and store.unifi_site_id
+               else current_app.config.get('UNIFI_SITE_ID', 'default'))
+
+    try:
+        unifi = get_unifi_for_store(store)
+        client = unifi.find_client_by_mac(site_id, portal_session.client_mac)
+        if client and client.get('id'):
+            unifi.revoke_guest(site_id, client['id'])
+            msg = 'Dispositivo desconectado.'
+        else:
+            logger.info(
+                '[UniFi] cliente %s nao esta mais no controlador — encerrando so localmente',
+                portal_session.client_mac,
+            )
+            msg = 'Dispositivo ja nao estava conectado; sessao encerrada.'
+    except UnifiAPIError as exc:
+        logger.error('[UniFi] falha ao revogar guest (mac=%s): %s', portal_session.client_mac, exc)
+        return False, f'Nao foi possivel desconectar no controlador: {exc}'
+
+    try:
+        portal_session.authorized = False
+        portal_session.expired_at = datetime.now(timezone.utc)
+        db.session.commit()
+        return True, msg
+    except Exception:
+        db.session.rollback()
+        return False, 'Dispositivo desconectado, mas falhou ao atualizar a sessao.'
+
+
 def record_consent(visitor: Visitor, marketing_optin: bool = False, version: str = "1.0"):
     visitor.terms_accepted_at = datetime.now(timezone.utc)
     visitor.terms_version     = version

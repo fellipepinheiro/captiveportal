@@ -15,7 +15,7 @@
 
 <!-- Busca -->
 <form method="get" class="mb-4 flex gap-2">
-  <input type="text" name="q" value="{{ q }}" placeholder="Buscar por nome ou e-mail…"
+  <input type="text" name="q" value="{{ q }}" placeholder="Buscar por nome, CPF, celular ou e-mail…"
     class="flex-1 rounded bg-white/10 border border-white/20 text-white px-3 py-2 text-sm placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-teal-400">
   <button class="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded text-sm">Buscar</button>
   {% if q %}<a href="{{ url_for('admin.visitors') }}" class="px-3 py-2 bg-white/10 text-white/70 rounded text-sm">Limpar</a>{% endif %}
@@ -57,19 +57,26 @@
           {% endif %}
         </td>
         <td class="px-4 py-3 text-center">
-          {% if v.is_blocked %}
-            <form method="post" action="{{ url_for('admin.visitor_unblock', vid=v.id) }}" class="inline">
-              <button class="text-xs bg-emerald-700 hover:bg-emerald-600 text-white px-2 py-1 rounded"
-                onclick="return confirm('Desbloquear {{ v.full_name }}?')">Desbloquear</button>
-            </form>
-          {% else %}
-            <button onclick="openBlockModal({{ v.id }}, '{{ v.full_name | e }}')"
-              class="text-xs bg-red-700 hover:bg-red-600 text-white px-2 py-1 rounded">Bloquear</button>
-          {% endif %}
+          <div class="flex items-center justify-center gap-1.5">
+            {% if v.is_blocked %}
+              <form method="post" action="{{ url_for('admin.visitor_unblock', vid=v.id) }}" class="inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="text-xs bg-emerald-700 hover:bg-emerald-600 text-white px-2 py-1 rounded"
+                  onclick="return confirm('Desbloquear {{ v.full_name }}?')">Desbloquear</button>
+              </form>
+            {% else %}
+              <button onclick="openBlockModal({{ v.id }}, '{{ v.full_name | e }}')"
+                class="text-xs bg-red-700 hover:bg-red-600 text-white px-2 py-1 rounded">Bloquear</button>
+            {% endif %}
+            <button onclick="openDeleteModal({{ v.id }}, '{{ v.full_name | e }}')"
+              class="text-xs border border-red-500/30 text-red-300 hover:bg-red-500/10 px-2 py-1 rounded">
+              Excluir
+            </button>
+          </div>
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="7" class="px-4 py-8 text-center text-white/40">Nenhum visitante encontrado.</td></tr>
+      <tr><td colspan="8" class="px-4 py-8 text-center text-white/40">Nenhum visitante encontrado.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -97,6 +104,7 @@
     <h2 class="text-lg font-semibold text-white mb-1">Bloquear visitante</h2>
     <p id="blockModalName" class="text-white/60 text-sm mb-4"></p>
     <form id="blockForm" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
       <label class="block text-sm text-white/70 mb-1">Motivo do bloqueio</label>
       <input type="text" name="reason" placeholder="Ex: Uso indevido da rede"
         class="w-full rounded bg-white/10 border border-white/20 text-white px-3 py-2 text-sm placeholder-white/40 mb-4 focus:outline-none focus:ring-2 focus:ring-red-500">
@@ -110,7 +118,45 @@
   </div>
 </div>
 
+<!-- Modal excluir -->
+<div id="deleteModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/60">
+  <div class="bg-slate-800 border border-white/20 rounded-xl p-6 w-full max-w-md mx-4">
+    <h2 class="text-lg font-semibold text-white mb-1">Excluir cadastro</h2>
+    <p id="deleteModalName" class="text-white/60 text-sm mb-4"></p>
+    <div class="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2.5 mb-4">
+      <p class="text-xs text-amber-200/90 leading-relaxed">
+        Apaga nome, CPF, celular, e-mail e o histórico de consentimento — sem volta.
+        Os registros de acesso à rede são <strong>mantidos de forma anônima</strong>,
+        como exige o Marco Civil da Internet.
+      </p>
+    </div>
+    <form id="deleteForm" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="flex justify-end gap-2">
+        <button type="button" onclick="closeDeleteModal()"
+          class="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded text-sm">Cancelar</button>
+        <button type="submit"
+          class="px-4 py-2 bg-red-700 hover:bg-red-600 text-white rounded text-sm">Excluir definitivamente</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
+function openDeleteModal(vid, name) {
+  document.getElementById('deleteForm').action = `/admin/visitantes/${vid}/excluir`;
+  document.getElementById('deleteModalName').textContent = name;
+  document.getElementById('deleteModal').classList.remove('hidden');
+  document.getElementById('deleteModal').classList.add('flex');
+}
+function closeDeleteModal() {
+  document.getElementById('deleteModal').classList.add('hidden');
+  document.getElementById('deleteModal').classList.remove('flex');
+}
+document.getElementById('deleteModal').addEventListener('click', function(e) {
+  if (e.target === this) closeDeleteModal();
+});
+
 function openBlockModal(vid, name) {
   document.getElementById('blockForm').action = `/admin/visitantes/${vid}/bloquear`;
   document.getElementById('blockModalName').textContent = name;
