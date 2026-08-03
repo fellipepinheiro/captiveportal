@@ -1,3 +1,5 @@
+import time
+
 import click
 from flask.cli import with_appcontext
 from app.extensions import db
@@ -20,3 +22,22 @@ def register_commands(app):
         db.session.add(user)
         db.session.commit()
         click.echo(f"Admin '{username}' criado com sucesso!")
+
+    @app.cli.command("sync-sessions")
+    @click.option("--interval", type=int, default=0,
+                  help="Repete a cada N segundos. 0 (padrao) executa uma vez e sai.")
+    @with_appcontext
+    def sync_sessions(interval):
+        """Encerra as sessoes de quem ja saiu do wifi.
+
+        A API do UniFi nao avisa quando um cliente desconecta, entao o
+        estado precisa ser conferido no controlador de tempos em tempos.
+        """
+        from app.services.session_sync import sync_all
+
+        while True:
+            for slug, resultado in sync_all().items():
+                click.echo(f"[{slug}] {resultado}")
+            if not interval:
+                break
+            time.sleep(interval)

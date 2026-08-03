@@ -150,6 +150,43 @@ class UnifiAPI:
     # ------------------------------------------------------------------
     # Clientes
     # ------------------------------------------------------------------
+    def list_clients(self, site_id: str, limit: int = 200) -> list:
+        """Lista os clientes conectados ao site.
+
+        Estar nesta lista significa estar conectado ao wifi; o campo
+        `access.authorized` diz se o guest tem acesso liberado.
+        Pagina ate esgotar, para nao perder clientes em sites grandes.
+        """
+        if self.mock:
+            return []
+
+        itens, offset = [], 0
+        while True:
+            resp = None
+            try:
+                resp = self.session.get(
+                    f'{self.base_url}/v1/sites/{site_id}/clients',
+                    params={'limit': limit, 'offset': offset},
+                    timeout=self.timeout,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+            except Exception as exc:
+                err = _api_error(exc, resp)
+                logger.error('[UniFi] list_clients falhou (site=%s): %s', site_id, err)
+                raise err from exc
+
+            if isinstance(data, list):
+                return data
+            pagina = data.get('data') or data.get('items') or []
+            itens.extend(pagina)
+
+            total = data.get('totalCount')
+            offset += len(pagina)
+            if not pagina or total is None or offset >= total:
+                break
+        return itens
+
     def find_client_by_mac(self, site_id: str, mac_address: str) -> dict | None:
         """Retorna o dict do cliente ou None se nao encontrado."""
         if self.mock:
