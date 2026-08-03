@@ -11,7 +11,7 @@ from flask import (
     url_for, flash, Response, jsonify, current_app, send_from_directory
 )
 from flask_login import login_user, logout_user, login_required, current_user
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 from werkzeug.utils import secure_filename
 
 from app.extensions import db, limiter, csrf
@@ -749,7 +749,16 @@ _SLUG_RE = re.compile(r'^[a-z0-9-]{2,80}$')
 @login_required
 def stores():
     all_stores = Store.query.order_by(Store.name).all()
-    return render_template("admin/stores.html", stores=all_stores)
+
+    # Sessoes abertas por loja, em uma consulta so. E o que o portal
+    # registrou; o numero real do controlador aparece ao abrir a loja.
+    abertas = dict(
+        db.session.query(PortalSession.store_id, func.count())
+        .filter(PortalSession.authorized.is_(True))
+        .filter(PortalSession.expired_at.is_(None))
+        .group_by(PortalSession.store_id).all()
+    )
+    return render_template("admin/stores.html", stores=all_stores, abertas=abertas)
 
 
 @bp.get("/lojas/nova")
@@ -872,6 +881,112 @@ def store_test(sid: int):
         return jsonify({"ok": True, "mock": unifi.mock, "sites": sites})
     except UnifiAPIError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 502
+
+
+@bp.get("/lojas/<int:sid>/conexoes")
+@login_required
+def store_connections(sid: int):
+    """Quem esta com acesso liberado nesta loja, segundo o controlador.
+
+    A fonte e o controlador, nao o banco: o UniFi reautoriza sozinho um
+    dispositivo cuja janela de acesso ainda nao expirou, sem passar pelo
+    portal. Essas conexoes existem de fato mas nao tem sessao registrada —
+    e aparecem aqui marcadas como tal, senao a tela mostraria menos gente
+    conectada do que realmente esta usando a rede.
+    """
+    store = Store.query.get_or_404(sid)
+    unifi = get_unifi_for_store(store)
+    if unifi.mock:
+        return jsonify({"ok": True, "mock": True, "conexoes": []})
+
+    site_id = store.unifi_site_id or "default"
+    try:
+        clientes = unifi.list_clients(site_id)
+        trafego = unifi.get_client_traffic(unifi.site_name_from_id(site_id))
+    except UnifiAPIError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 502
+
+    ativos = [
+        c for c in clientes
+        if (c.get("access") or {}).get("authorized") is True
+    ]
+    macs = [(c.get("macAddress") or "").lower() for c in ativos]
+
+    # Uma consulta so para todas as sessoes abertas destes MACs
+    sessoes = {}
+    if macs:
+        for ps in (PortalSession.query
+                   .filter(func.lower(PortalSession.client_mac).in_(macs))
+                   .filter(PortalSession.authorized.is_(True))
+                   .filter(PortalSession.expired_at.is_(None))
+                   .order_by(PortalSession.id.desc()).all()):
+            sessoes.setdefault((ps.client_mac or "").lower(), ps)
+
+    conexoes = []
+    for c in ativos:
+        mac = (c.get("macAddress") or "").lower()
+        ps = sessoes.get(mac)
+        uso = trafego.get(mac) or {}
+        conexoes.append({
+            "mac":        mac,
+            "nome_rede":  c.get("name") or "",
+            "ip":         c.get("ipAddress") or "",
+            "desde":      c.get("connectedAt"),
+            "bytes":      (uso.get("rx") or 0) + (uso.get("tx") or 0),
+            "sessao_id":  ps.id if ps else None,
+            "visitante":  ps.visitor.full_name if ps and ps.visitor else None,
+            "visitante_id": ps.visitor_id if ps else None,
+            "inicio":     fmt_datetime(ps.authorized_at) if ps and ps.authorized_at else None,
+            "sem_sessao": ps is None,
+        })
+    conexoes.sort(key=lambda x: -x["bytes"])
+    return jsonify({"ok": True, "mock": False, "conexoes": conexoes})
+
+
+@bp.post("/lojas/<int:sid>/derrubar")
+@login_required
+@limiter.limit("30 per minute")
+def store_disconnect(sid: int):
+    """Derruba uma conexao desta loja pelo MAC.
+
+    Age pelo MAC e nao pelo id da sessao porque a conexao pode existir no
+    controlador sem sessao no portal (reautorizacao automatica). A sessao
+    local, quando houver, e encerrada junto.
+    """
+    store = Store.query.get_or_404(sid)
+    mac = (request.form.get("mac") or "").strip().lower()
+    if not mac:
+        return jsonify({"ok": False, "error": "MAC não informado"}), 400
+
+    site_id = store.unifi_site_id or "default"
+    try:
+        unifi = get_unifi_for_store(store)
+        cliente = unifi.find_client_by_mac(site_id, mac)
+        if not cliente or not cliente.get("id"):
+            msg = "Dispositivo já não está no controlador."
+        else:
+            try:
+                unifi.revoke_guest(site_id, cliente["id"])
+                msg = "Dispositivo desconectado."
+            except UnifiAPIError as exc:
+                if exc.code != "api.client.no-active-guest-authorization":
+                    raise
+                msg = "O dispositivo já estava sem acesso."
+    except UnifiAPIError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 502
+
+    encerradas = 0
+    for ps in (PortalSession.query
+               .filter(func.lower(PortalSession.client_mac) == mac)
+               .filter(PortalSession.authorized.is_(True))
+               .filter(PortalSession.expired_at.is_(None)).all()):
+        ps.close(max_minutes=store.session_minutes or
+                 current_app.config.get("UNIFI_SESSION_MINUTES", 480))
+        encerradas += 1
+    if encerradas:
+        db.session.commit()
+
+    return jsonify({"ok": True, "mensagem": msg, "sessoes_encerradas": encerradas})
 
 
 # ─── Admin Users ──────────────────────────────────────────────────────────────────────────────────
