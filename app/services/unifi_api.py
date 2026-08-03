@@ -150,6 +150,59 @@ class UnifiAPI:
     # ------------------------------------------------------------------
     # Clientes
     # ------------------------------------------------------------------
+    @staticmethod
+    def site_name_from_id(site_id: str) -> str:
+        """Nome interno do site, usado pela API classica.
+
+        A v1 identifica o site por UUID; a classica usa o nome interno
+        ('default' na esmagadora maioria das instalacoes). Quando o valor
+        configurado e um UUID, nao ha como derivar o nome dele — cai para
+        'default'. Se ja for um nome, usa como esta.
+        """
+        s = (site_id or '').strip()
+        parece_uuid = len(s) == 36 and s.count('-') == 4
+        return 'default' if (not s or parece_uuid) else s
+
+    def get_client_traffic(self, site_name: str = 'default') -> dict:
+        """Bytes trafegados por MAC: {mac: {'rx': int, 'tx': int, 'uptime': int}}.
+
+        A API de integracao v1 nao expoe contadores de trafego — o objeto de
+        cliente traz apenas identificacao e estado de acesso. Os bytes vem da
+        API classica (/api/s/<site>/stat/sta), que aceita a mesma X-API-KEY.
+
+        `site_name` aqui e o nome interno do site ('default'), nao o UUID que
+        a v1 usa: sao APIs diferentes com identificadores diferentes.
+
+        Devolve dict vazio se a chamada falhar — trafego e dado complementar
+        e nao deve derrubar a sincronizacao de sessoes.
+        """
+        if self.mock:
+            return {}
+
+        # base_url aponta para .../proxy/network/integration; a API classica
+        # fica um nivel acima, em .../proxy/network/api
+        raiz = self.base_url.removesuffix('/integration')
+        url = f'{raiz}/api/s/{site_name}/stat/sta'
+        try:
+            resp = self.session.get(url, timeout=self.timeout)
+            resp.raise_for_status()
+            data = resp.json().get('data', [])
+        except Exception as exc:
+            logger.warning('[UniFi] trafego indisponivel (%s): %s', url, exc)
+            return {}
+
+        trafego = {}
+        for c in data:
+            mac = (c.get('mac') or '').lower()
+            if not mac:
+                continue
+            trafego[mac] = {
+                'rx': int(c.get('rx_bytes') or 0),   # download do cliente
+                'tx': int(c.get('tx_bytes') or 0),   # upload do cliente
+                'uptime': int(c.get('uptime') or 0),
+            }
+        return trafego
+
     def list_clients(self, site_id: str, limit: int = 200) -> list:
         """Lista os clientes conectados ao site.
 

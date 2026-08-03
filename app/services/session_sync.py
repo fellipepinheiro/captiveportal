@@ -56,7 +56,10 @@ def _clientes_ativos(store: Store) -> set[str] | None:
         # authorized=False = ainda conectado, mas sem acesso liberado.
         if acesso.get('authorized') is True:
             ativos.add(mac)
-    return ativos
+
+    # Trafego vem da API classica e e complementar: se falhar, segue sem ele.
+    trafego = unifi.get_client_traffic(unifi.site_name_from_id(site_id))
+    return ativos, trafego
 
 
 def sync_store(store: Store, incluir_sem_loja: bool = False) -> tuple[int, str]:
@@ -82,23 +85,33 @@ def sync_store(store: Store, incluir_sem_loja: bool = False) -> tuple[int, str]:
     if not abertas:
         return 0, 'nenhuma sessao aberta'
 
-    ativos = _clientes_ativos(store)
-    if ativos is None:
+    resultado = _clientes_ativos(store)
+    if resultado is None:
         return 0, 'controlador indisponivel (ou modo mock) — nada encerrado'
+    ativos, trafego = resultado
 
     agora = datetime.now(timezone.utc)
     limite = store.session_minutes or current_app.config.get('UNIFI_SESSION_MINUTES', 480)
     encerradas = 0
     for ps in abertas:
         mac = (ps.client_mac or '').lower()
+
+        # Grava o trafego antes de decidir: quem esta saindo tambem precisa
+        # ter o consumo registrado, senao a sessao fecha zerada.
+        uso = trafego.get(mac)
+        if uso:
+            ps.bytes_down = uso['rx']
+            ps.bytes_up   = uso['tx']
+
         if mac in ativos:
             continue
 
         ps.close(agora, max_minutes=limite)
         encerradas += 1
 
+    # commit mesmo sem encerramentos: o trafego das sessoes ativas mudou
+    db.session.commit()
     if encerradas:
-        db.session.commit()
         logger.info('[sync] loja %s: %d sessao(oes) encerrada(s)', store.slug, encerradas)
     return encerradas, ''
 

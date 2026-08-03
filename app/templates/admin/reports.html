@@ -2,131 +2,376 @@
 {% block title %}Relatórios{% endblock %}
 {% block content %}
 
-<!-- Header -->
 <div class="flex flex-wrap items-center justify-between gap-3 mb-5">
-  <h1 class="text-xl font-bold text-white">Relatórios</h1>
-  <div class="flex gap-2" id="periodButtons">
-    <button onclick="loadData(7)"  data-days="7"  class="period-btn px-3 py-1.5 rounded-lg text-sm bg-white/10 text-white/70 hover:bg-white/20">7 dias</button>
-    <button onclick="loadData(30)" data-days="30" class="period-btn px-3 py-1.5 rounded-lg text-sm bg-teal-600 text-white">30 dias</button>
-    <button onclick="loadData(90)" data-days="90" class="period-btn px-3 py-1.5 rounded-lg text-sm bg-white/10 text-white/70 hover:bg-white/20">90 dias</button>
+  <div>
+    <h1 class="text-xl font-bold text-white">Relatórios</h1>
+    <p class="text-sm text-slate-500 mt-0.5">Comportamento de uso do hotspot</p>
   </div>
+  <a id="btn-export"
+     class="px-3 py-2 bg-white/10 hover:bg-white/20 text-white text-sm rounded-lg cursor-pointer">
+    ⬇ Exportar CSV
+  </a>
 </div>
 
-<div id="errorBanner" class="hidden mb-4 px-4 py-3 rounded-xl bg-red-500/15 border border-red-500/30 text-red-400 text-sm"></div>
+<!-- ── Filtros ─────────────────────────────────────────────────────────── -->
+<form method="get" id="filtros"
+      class="bg-slate-900 border border-white/5 rounded-2xl p-4 mb-5 flex flex-wrap items-end gap-3">
+  <div>
+    <label class="block text-xs text-slate-500 mb-1">Loja</label>
+    <select name="loja"
+            class="rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-slate-100
+                   focus:outline-none focus:border-teal-500/50 min-w-[150px]">
+      <option value="">Todas as lojas</option>
+      {% for l in lojas %}
+      <option value="{{ l.id }}" {% if loja_id == l.id %}selected{% endif %}>{{ l.name }}</option>
+      {% endfor %}
+    </select>
+  </div>
 
-<!-- KPIs -->
+  <div>
+    <label class="block text-xs text-slate-500 mb-1">De</label>
+    <input type="date" name="de" value="{{ de }}"
+           class="rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-slate-100
+                  focus:outline-none focus:border-teal-500/50">
+  </div>
+  <div>
+    <label class="block text-xs text-slate-500 mb-1">Até</label>
+    <input type="date" name="ate" value="{{ ate }}"
+           class="rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-slate-100
+                  focus:outline-none focus:border-teal-500/50">
+  </div>
+
+  <div class="relative">
+    <label class="block text-xs text-slate-500 mb-1">Cliente</label>
+    <input type="text" id="busca-cliente" autocomplete="off"
+           placeholder="{{ visitante.full_name if visitante else 'Nome, CPF ou celular…' }}"
+           class="rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-slate-100
+                  focus:outline-none focus:border-teal-500/50 min-w-[190px]">
+    <input type="hidden" name="visitante" id="visitante-id" value="{{ request.args.get('visitante', '') }}">
+    <div id="sugestoes"
+         class="hidden absolute z-30 mt-1 w-full max-h-56 overflow-y-auto rounded-xl
+                bg-slate-800 border border-white/10 shadow-xl"></div>
+  </div>
+
+  <button type="submit" class="rounded-xl px-4 py-2 text-sm font-semibold btn-accent">Aplicar</button>
+
+  <div class="flex gap-1.5">
+    {% for dias, rotulo in [(7, '7d'), (30, '30d'), (90, '90d')] %}
+    <button type="button" data-dias="{{ dias }}"
+            class="atalho rounded-lg border border-white/10 px-2.5 py-2 text-xs text-slate-400 hover:bg-white/10 transition">
+      {{ rotulo }}
+    </button>
+    {% endfor %}
+  </div>
+
+  {% if loja_id or visitante or request.args.get('de') %}
+  <a href="{{ url_for('admin.reports') }}"
+     class="rounded-lg px-2.5 py-2 text-xs text-slate-500 hover:text-slate-300 transition">Limpar</a>
+  {% endif %}
+</form>
+
+{% if visitante %}
+<div class="mb-4 text-xs text-slate-400">
+  Filtrando por <strong class="text-slate-200">{{ visitante.full_name }}</strong>
+  ({{ visitante.cpf | cpf }}) ·
+  <a href="{{ url_for('admin.visitor_detail', vid=visitante.id) }}" class="text-teal-400 hover:underline">ver extrato</a>
+</div>
+{% endif %}
+
+<!-- ── KPIs ────────────────────────────────────────────────────────────── -->
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-5">
-  <div class="bg-white/5 border border-white/10 rounded-xl p-3">
-    <p class="text-white/50 text-xs uppercase mb-1">Sessões</p>
-    <p id="kpi-sessions" class="text-xl font-bold text-white tabular-nums">—</p>
+  {% set cards = [
+    ('kpi-visitantes', 'Visitantes únicos', 'kpi-visitantes-sub'),
+    ('kpi-conexoes',   'Conexões',          'kpi-conexoes-sub'),
+    ('kpi-tempo',      'Tempo médio',       'kpi-tempo-sub'),
+    ('kpi-trafego',    'Tráfego total',     'kpi-trafego-sub'),
+  ] %}
+  {% for id, titulo, sub in cards %}
+  <div class="bg-slate-900 border border-white/5 rounded-2xl p-4">
+    <p class="text-xs text-slate-500">{{ titulo }}</p>
+    <p id="{{ id }}" class="text-2xl font-bold text-white tabular-nums mt-1">—</p>
+    <p id="{{ sub }}" class="text-xs text-slate-600 mt-0.5">&nbsp;</p>
   </div>
-  <div class="bg-white/5 border border-white/10 rounded-xl p-3">
-    <p class="text-white/50 text-xs uppercase mb-1">Autorizadas</p>
-    <p id="kpi-authorized" class="text-xl font-bold text-teal-400 tabular-nums">—</p>
+  {% endfor %}
+</div>
+
+<!-- ── Tendência ───────────────────────────────────────────────────────── -->
+<div class="bg-slate-900 border border-white/5 rounded-2xl p-4 mb-4">
+  <h2 class="text-white/70 text-xs uppercase tracking-wide mb-3">Movimento no período</h2>
+  <div id="chartTendencia" style="height:240px"></div>
+</div>
+
+<!-- ── Horários ────────────────────────────────────────────────────────── -->
+<div class="grid lg:grid-cols-3 gap-4 mb-4">
+  <div class="lg:col-span-2 bg-slate-900 border border-white/5 rounded-2xl p-4">
+    <h2 class="text-white/70 text-xs uppercase tracking-wide mb-1">Horários de pico</h2>
+    <p class="text-xs text-slate-600 mb-3">Conexões por dia da semana e hora</p>
+    <div id="chartHeatmap" style="height:260px"></div>
   </div>
-  <div class="bg-white/5 border border-white/10 rounded-xl p-3">
-    <p class="text-white/50 text-xs uppercase mb-1">Novos</p>
-    <p id="kpi-visitors" class="text-xl font-bold text-white tabular-nums">—</p>
-  </div>
-  <div class="bg-white/5 border border-white/10 rounded-xl p-3">
-    <p class="text-white/50 text-xs uppercase mb-1">Taxa auth.</p>
-    <p id="kpi-rate" class="text-xl font-bold text-emerald-400 tabular-nums">—</p>
+  <div class="bg-slate-900 border border-white/5 rounded-2xl p-4">
+    <h2 class="text-white/70 text-xs uppercase tracking-wide mb-1">Frequência de visita</h2>
+    <p class="text-xs text-slate-600 mb-3">Quantas vezes cada cliente voltou</p>
+    <div id="chartFrequencia" style="height:260px"></div>
   </div>
 </div>
 
-<!-- Gráfico linha -->
-<div class="bg-white/5 border border-white/10 rounded-xl p-4 mb-4">
-  <h2 class="text-white/70 text-xs uppercase tracking-wide mb-3">Acessos por dia</h2>
-  <div id="chartLine" style="height:220px"></div>
-</div>
-
-<!-- Gráficos de pizza: empilhados no mobile, lado a lado no desktop -->
-<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
-  <div class="bg-white/5 border border-white/10 rounded-xl p-4">
+<!-- ── Permanência, dispositivos, SO ───────────────────────────────────── -->
+<div class="grid lg:grid-cols-3 gap-4 mb-4">
+  <div class="bg-slate-900 border border-white/5 rounded-2xl p-4">
+    <h2 class="text-white/70 text-xs uppercase tracking-wide mb-3">Tempo de permanência</h2>
+    <div id="chartPermanencia" style="height:220px"></div>
+  </div>
+  <div class="bg-slate-900 border border-white/5 rounded-2xl p-4">
     <h2 class="text-white/70 text-xs uppercase tracking-wide mb-3">Dispositivos</h2>
-    <div id="chartDevice" style="height:200px"></div>
+    <div id="chartDispositivos" style="height:220px"></div>
   </div>
-  <div class="bg-white/5 border border-white/10 rounded-xl p-4">
-    <h2 class="text-white/70 text-xs uppercase tracking-wide mb-3">Sistemas operacionais</h2>
-    <div id="chartOS" style="height:200px"></div>
+  <div class="bg-slate-900 border border-white/5 rounded-2xl p-4">
+    <h2 class="text-white/70 text-xs uppercase tracking-wide mb-3">Sistemas</h2>
+    <div id="chartSistemas" style="height:220px"></div>
+  </div>
+</div>
+
+<!-- ── Ranking de lojas ────────────────────────────────────────────────── -->
+<div class="bg-slate-900 border border-white/5 rounded-2xl overflow-hidden mb-4">
+  <div class="px-4 py-3 border-b border-white/5">
+    <h2 class="text-sm font-medium text-white">Desempenho por loja</h2>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-xs text-slate-500 border-b border-white/5">
+          <th class="text-left px-4 py-2.5 font-medium">Loja</th>
+          <th class="text-right px-4 py-2.5 font-medium">Conexões</th>
+          <th class="text-right px-4 py-2.5 font-medium">Visitantes</th>
+          <th class="text-right px-4 py-2.5 font-medium">Tempo médio</th>
+          <th class="text-right px-4 py-2.5 font-medium">Tráfego</th>
+        </tr>
+      </thead>
+      <tbody id="tbody-lojas" class="divide-y divide-white/5"></tbody>
+    </table>
+  </div>
+</div>
+
+<!-- ── Top clientes ────────────────────────────────────────────────────── -->
+<div class="grid lg:grid-cols-2 gap-4">
+  <div class="bg-slate-900 border border-white/5 rounded-2xl overflow-hidden">
+    <div class="px-4 py-3 border-b border-white/5">
+      <h2 class="text-sm font-medium text-white">Maiores consumos</h2>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-xs text-slate-500 border-b border-white/5">
+            <th class="text-left px-4 py-2.5 font-medium">Cliente</th>
+            <th class="text-right px-4 py-2.5 font-medium">Tráfego</th>
+            <th class="text-right px-4 py-2.5 font-medium">Conexões</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-consumo" class="divide-y divide-white/5"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="bg-slate-900 border border-white/5 rounded-2xl overflow-hidden">
+    <div class="px-4 py-3 border-b border-white/5">
+      <h2 class="text-sm font-medium text-white">Mais frequentes</h2>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-xs text-slate-500 border-b border-white/5">
+            <th class="text-left px-4 py-2.5 font-medium">Cliente</th>
+            <th class="text-right px-4 py-2.5 font-medium">Conexões</th>
+            <th class="text-right px-4 py-2.5 font-medium">Tempo total</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-frequencia" class="divide-y divide-white/5"></tbody>
+      </table>
+    </div>
   </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
 <script>
-const COLORS = ['#14b8a6','#6366f1','#f59e0b','#ef4444','#8b5cf6','#22c55e'];
-const isMobile = () => window.innerWidth < 768;
+const CORES = ['#14b8a6', '#6366f1', '#f59e0b', '#22c55e', '#ec4899', '#8b5cf6'];
+const DIAS  = ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
 
-const chartLine   = echarts.init(document.getElementById('chartLine'),   'dark');
-const chartDevice = echarts.init(document.getElementById('chartDevice'), 'dark');
-const chartOS     = echarts.init(document.getElementById('chartOS'),     'dark');
-[chartLine, chartDevice, chartOS].forEach(c => c.setOption({ backgroundColor: 'transparent' }));
+const graficos = {};
+['Tendencia','Heatmap','Frequencia','Permanencia','Dispositivos','Sistemas'].forEach(n => {
+  const el = document.getElementById('chart' + n);
+  if (el) {
+    graficos[n] = echarts.init(el, 'dark');
+    graficos[n].setOption({ backgroundColor: 'transparent' });
+  }
+});
 
-function showError(msg) {
-  const el = document.getElementById('errorBanner');
-  el.textContent = '⚠️ Erro ao carregar dados: ' + msg;
-  el.classList.remove('hidden');
+// ── formatação ──────────────────────────────────────────────────────────
+function bytes(n) {
+  if (!n) return '0 MB';
+  const gb = n / 1073741824;
+  if (gb >= 1) return gb.toFixed(1).replace('.', ',') + ' GB';
+  return (n / 1048576).toFixed(1).replace('.', ',') + ' MB';
 }
-function clearError() { document.getElementById('errorBanner').classList.add('hidden'); }
+function minutos(m) {
+  if (!m) return '0 min';
+  if (m < 60) return m + ' min';
+  return Math.floor(m / 60) + 'h ' + (m % 60) + 'min';
+}
+function num(n) { return (n ?? 0).toLocaleString('pt-BR'); }
 
-function setPeriodBtn(days) {
-  document.querySelectorAll('.period-btn').forEach(b => {
-    const active = parseInt(b.dataset.days) === days;
-    b.className = `period-btn px-3 py-1.5 rounded-lg text-sm ${
-      active ? 'bg-teal-600 text-white' : 'bg-white/10 text-white/70 hover:bg-white/20'
-    }`;
+// ── filtros ─────────────────────────────────────────────────────────────
+const params = new URLSearchParams(location.search);
+
+document.querySelectorAll('.atalho').forEach(b => {
+  b.addEventListener('click', () => {
+    const dias = parseInt(b.dataset.dias, 10);
+    const ate  = new Date();
+    const de   = new Date(); de.setDate(de.getDate() - (dias - 1));
+    const iso  = d => d.toISOString().slice(0, 10);
+    document.querySelector('[name=de]').value  = iso(de);
+    document.querySelector('[name=ate]').value = iso(ate);
+    document.getElementById('filtros').submit();
   });
+});
+
+// autocomplete de cliente
+const busca = document.getElementById('busca-cliente');
+const caixa = document.getElementById('sugestoes');
+let timer;
+busca.addEventListener('input', () => {
+  clearTimeout(timer);
+  const termo = busca.value.trim();
+  if (!termo) document.getElementById('visitante-id').value = '';
+  if (termo.length < 2) { caixa.classList.add('hidden'); return; }
+  timer = setTimeout(async () => {
+    const r = await fetch('{{ url_for("admin.reports_find_visitor") }}?q=' + encodeURIComponent(termo));
+    const achados = await r.json();
+    caixa.innerHTML = '';
+    if (!achados.length) {
+      caixa.innerHTML = '<p class="px-3 py-2 text-xs text-slate-500">Nenhum cliente encontrado</p>';
+    }
+    achados.forEach(v => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.className = 'w-full text-left px-3 py-2 text-sm text-slate-200 hover:bg-white/10 transition';
+      item.innerHTML = v.nome + ' <span class="text-xs text-slate-500">' + v.cpf + '</span>';
+      item.onclick = () => {
+        document.getElementById('visitante-id').value = v.id;
+        busca.value = v.nome;
+        caixa.classList.add('hidden');
+        document.getElementById('filtros').submit();
+      };
+      caixa.appendChild(item);
+    });
+    caixa.classList.remove('hidden');
+  }, 250);
+});
+document.addEventListener('click', e => {
+  if (!caixa.contains(e.target) && e.target !== busca) caixa.classList.add('hidden');
+});
+
+document.getElementById('btn-export').href =
+  '{{ url_for("admin.reports_export") }}?' + params.toString();
+
+// ── carga dos dados ─────────────────────────────────────────────────────
+function pizza(dados) {
+  return {
+    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
+    legend: { bottom: 0, textStyle: { color: '#94a3b8', fontSize: 10 } },
+    series: [{
+      type: 'pie', radius: ['45%', '68%'], center: ['50%', '43%'],
+      itemStyle: { borderColor: '#0f172a', borderWidth: 2 },
+      label: { show: false },
+      data: dados.map((d, i) => ({ ...d, itemStyle: { color: CORES[i % CORES.length] } })),
+    }],
+  };
 }
 
-async function loadData(days = 30) {
-  clearError();
-  setPeriodBtn(days);
-  let res;
-  try { res = await fetch(`/admin/relatorios/dados?days=${days}`); }
-  catch (err) { showError('Falha de rede — ' + err.message); return; }
-  if (!res.ok) { const t = await res.text().catch(() => ''); showError(`HTTP ${res.status} — ${t.slice(0,200)}`); return; }
-  let data;
-  try { data = await res.json(); }
-  catch (err) { showError('Resposta inválida — ' + err.message); return; }
+async function carregar() {
+  const r = await fetch('{{ url_for("admin.reports_data") }}?' + params.toString());
+  const d = await r.json();
+  const k = d.kpis;
 
-  document.getElementById('kpi-sessions').textContent    = (data.totals.sessions    ?? 0).toLocaleString('pt-BR');
-  document.getElementById('kpi-authorized').textContent  = (data.totals.authorized  ?? 0).toLocaleString('pt-BR');
-  document.getElementById('kpi-visitors').textContent    = (data.totals.new_visitors ?? 0).toLocaleString('pt-BR');
-  document.getElementById('kpi-rate').textContent        = (data.totals.auth_rate   ?? 0) + '%';
+  document.getElementById('kpi-visitantes').textContent = num(k.visitantes);
+  document.getElementById('kpi-visitantes-sub').textContent =
+    k.novos + ' novos · ' + k.recorrentes + ' recorrentes';
 
-  const mobile = isMobile();
+  document.getElementById('kpi-conexoes').textContent = num(k.conexoes);
+  document.getElementById('kpi-conexoes-sub').textContent =
+    num(k.acessos) + ' acessos · ' + k.conversao + '% concluíram';
 
-  chartLine.setOption({
+  document.getElementById('kpi-tempo').textContent = minutos(k.minutos_medio);
+  document.getElementById('kpi-tempo-sub').textContent =
+    'mediana ' + minutos(k.minutos_mediana) + ' · total ' + minutos(k.minutos_total);
+
+  document.getElementById('kpi-trafego').textContent = bytes(k.bytes_total);
+  document.getElementById('kpi-trafego-sub').textContent =
+    '↓ ' + bytes(k.bytes_down) + ' · ↑ ' + bytes(k.bytes_up);
+
+  graficos.Tendencia.setOption({
     tooltip: { trigger: 'axis' },
-    legend: { data: ['Sessões','Autorizadas','Novos'], textStyle: { color: '#94a3b8' }, top: 0 },
-    grid:  { left: mobile ? '2%' : '3%', right: '2%', bottom: '3%', top: '14%', containLabel: true },
-    xAxis: { type: 'category', data: data.labels,
-             axisLabel: { color: '#94a3b8', interval: mobile ? Math.floor(data.labels.length / 5) : Math.floor(data.labels.length / 10) } },
-    yAxis: { type: 'value', axisLabel: { color: '#94a3b8' }, splitLine: { lineStyle: { color: '#ffffff15' } } },
+    legend: { data: ['Acessos', 'Conexões', 'Visitantes'], textStyle: { color: '#94a3b8', fontSize: 10 }, top: 0 },
+    grid: { left: 40, right: 16, top: 34, bottom: 28 },
+    xAxis: { type: 'category', data: d.tendencia.labels, axisLabel: { color: '#64748b', fontSize: 10 } },
+    yAxis: { type: 'value', axisLabel: { color: '#64748b', fontSize: 10 }, splitLine: { lineStyle: { color: '#1e293b' } } },
     series: [
-      { name: 'Sessões',    type: 'line', data: data.sessions,     smooth: true, areaStyle: { opacity: 0.15 }, color: COLORS[0], lineStyle: { width: 2 } },
-      { name: 'Autorizadas', type: 'line', data: data.authorized,   smooth: true, areaStyle: { opacity: 0.10 }, color: COLORS[1], lineStyle: { width: 2 } },
-      { name: 'Novos',       type: 'bar',  data: data.new_visitors, color: COLORS[2], opacity: 0.7, barMaxWidth: 10 },
+      { name: 'Acessos',    type: 'line', smooth: true, data: d.tendencia.acessos,    color: CORES[1], lineStyle: { width: 2 } },
+      { name: 'Conexões',   type: 'line', smooth: true, data: d.tendencia.conexoes,   color: CORES[0], lineStyle: { width: 2 }, areaStyle: { opacity: 0.12 } },
+      { name: 'Visitantes', type: 'line', smooth: true, data: d.tendencia.visitantes, color: CORES[2], lineStyle: { width: 2 } },
     ],
   });
 
-  const pieOpts = (containerId, seriesData) => ({
-    tooltip: { trigger: 'item', formatter: '{b}: {c} ({d}%)' },
-    legend: { bottom: 0, textStyle: { color: '#94a3b8' }, itemWidth: 10, itemHeight: 10,
-              textStyle: { fontSize: 11 } },
-    series: [{ type: 'pie', radius: ['35%','60%'], center: ['50%','42%'],
-      label: { show: false },
-      data: seriesData.map((d,i) => ({ ...d, itemStyle: { color: COLORS[i % COLORS.length] } })),
-    }],
+  const maxHeat = Math.max(1, ...d.heatmap.map(p => p[2]));
+  graficos.Heatmap.setOption({
+    tooltip: { formatter: p => DIAS[p.value[1]] + ' ' + p.value[0] + 'h: ' + p.value[2] + ' conexões' },
+    grid: { left: 40, right: 12, top: 10, bottom: 50 },
+    xAxis: { type: 'category', data: [...Array(24).keys()].map(h => h + 'h'),
+             axisLabel: { color: '#64748b', fontSize: 9, interval: 2 }, splitArea: { show: true } },
+    yAxis: { type: 'category', data: DIAS, axisLabel: { color: '#64748b', fontSize: 10 }, splitArea: { show: true } },
+    visualMap: { min: 0, max: maxHeat, calculable: false, orient: 'horizontal', left: 'center', bottom: 0,
+                 inRange: { color: ['#0f172a', '#0d9488', '#2dd4bf'] },
+                 textStyle: { color: '#64748b', fontSize: 10 } },
+    series: [{ type: 'heatmap', data: d.heatmap, itemStyle: { borderColor: '#0f172a', borderWidth: 1 } }],
   });
 
-  chartDevice.setOption(pieOpts('chartDevice', data.device_data || []));
-  chartOS.setOption(pieOpts('chartOS', data.os_data || []));
+  graficos.Frequencia.setOption(pizza(d.frequencia));
+  graficos.Permanencia.setOption({
+    tooltip: { trigger: 'axis' },
+    grid: { left: 70, right: 16, top: 10, bottom: 24 },
+    xAxis: { type: 'value', axisLabel: { color: '#64748b', fontSize: 10 }, splitLine: { lineStyle: { color: '#1e293b' } } },
+    yAxis: { type: 'category', data: d.permanencia.map(x => x.name), axisLabel: { color: '#94a3b8', fontSize: 10 } },
+    series: [{ type: 'bar', data: d.permanencia.map(x => x.value), itemStyle: { color: CORES[0], borderRadius: [0, 4, 4, 0] }, barWidth: '55%' }],
+  });
+  graficos.Dispositivos.setOption(pizza(d.dispositivos));
+  graficos.Sistemas.setOption(pizza(d.sistemas));
+
+  const vazio = c => '<tr><td colspan="' + c + '" class="px-4 py-6 text-center text-xs text-slate-600">Sem dados no período</td></tr>';
+
+  document.getElementById('tbody-lojas').innerHTML = d.lojas.length ? d.lojas.map(l => `
+    <tr class="hover:bg-white/3 transition">
+      <td class="px-4 py-2.5 text-slate-200">${l.loja}</td>
+      <td class="px-4 py-2.5 text-right tabular-nums text-slate-300">${num(l.conexoes)}</td>
+      <td class="px-4 py-2.5 text-right tabular-nums text-slate-300">${num(l.visitantes)}</td>
+      <td class="px-4 py-2.5 text-right tabular-nums text-slate-400">${minutos(l.conexoes ? Math.round(l.minutos / l.conexoes) : 0)}</td>
+      <td class="px-4 py-2.5 text-right tabular-nums text-slate-400">${bytes(l.bytes)}</td>
+    </tr>`).join('') : vazio(5);
+
+  document.getElementById('tbody-consumo').innerHTML = d.top_consumo.length ? d.top_consumo.map(c => `
+    <tr class="hover:bg-white/3 transition">
+      <td class="px-4 py-2.5"><a href="/admin/visitantes/${c.id}" class="text-slate-200 hover:text-teal-300 transition">${c.nome}</a></td>
+      <td class="px-4 py-2.5 text-right tabular-nums text-slate-300">${bytes(c.bytes)}</td>
+      <td class="px-4 py-2.5 text-right tabular-nums text-slate-400">${num(c.conexoes)}</td>
+    </tr>`).join('') : vazio(3);
+
+  document.getElementById('tbody-frequencia').innerHTML = d.top_frequencia.length ? d.top_frequencia.map(c => `
+    <tr class="hover:bg-white/3 transition">
+      <td class="px-4 py-2.5"><a href="/admin/visitantes/${c.id}" class="text-slate-200 hover:text-teal-300 transition">${c.nome}</a></td>
+      <td class="px-4 py-2.5 text-right tabular-nums text-slate-300">${num(c.conexoes)}</td>
+      <td class="px-4 py-2.5 text-right tabular-nums text-slate-400">${minutos(c.minutos)}</td>
+    </tr>`).join('') : vazio(3);
 }
 
-window.addEventListener('resize', () => {
-  [chartLine, chartDevice, chartOS].forEach(c => c.resize());
-});
-loadData(30);
+carregar();
+window.addEventListener('resize', () => Object.values(graficos).forEach(g => g.resize()));
 </script>
 {% endblock %}

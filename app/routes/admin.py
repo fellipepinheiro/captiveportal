@@ -454,90 +454,107 @@ def export_visitors():
 @bp.get("/relatorios")
 @login_required
 def reports():
-    return render_template("admin/reports.html")
+    de, ate, _, _ = _periodo_do_request()
+    visitor = None
+    vid = request.args.get("visitante", type=int)
+    if vid:
+        visitor = Visitor.query.get(vid)
+    return render_template(
+        "admin/reports.html",
+        lojas=Store.query.order_by(Store.name).all(),
+        loja_id=request.args.get("loja", type=int),
+        visitante=visitor,
+        de=de.isoformat(), ate=ate.isoformat(),
+    )
 
 
 @bp.get("/relatorios/dados")
 @login_required
 def reports_data():
-    from sqlalchemy import func, cast, Date, case as sa_case
+    from app.services.analytics import coletar
 
-    try:
-        days = max(1, min(int(request.args.get("days", 30)), 365))
-    except (ValueError, TypeError):
-        days = 30
+    de, ate, inicio, fim = _periodo_do_request()
+    return jsonify(coletar(
+        inicio, fim, de, ate,
+        store_id=request.args.get("loja", type=int),
+        visitor_id=request.args.get("visitante", type=int),
+    ))
 
-    since = datetime.now(timezone.utc) - timedelta(days=days)
 
-    auth_expr = func.sum(
-        sa_case((PortalSession.authorized == True, 1), else_=0)
-    )
+@bp.get("/relatorios/exportar.csv")
+@login_required
+def reports_export():
+    """Exporta as sessoes do periodo com os mesmos filtros da tela."""
+    de, ate, inicio, fim = _periodo_do_request()
+    loja_id = request.args.get("loja", type=int)
+    vid = request.args.get("visitante", type=int)
 
-    sessions_by_day = (
-        db.session.query(
-            cast(PortalSession.created_at, Date).label("day"),
-            func.count().label("total"),
-            auth_expr.label("auth"),
-        )
-        .filter(PortalSession.created_at >= since)
-        .group_by(cast(PortalSession.created_at, Date))
-        .order_by(cast(PortalSession.created_at, Date))
-        .all()
-    )
+    q = (PortalSession.query
+         .filter(PortalSession.created_at >= inicio, PortalSession.created_at < fim))
+    if loja_id:
+        q = q.filter(PortalSession.store_id == loja_id)
+    if vid:
+        q = q.filter(PortalSession.visitor_id == vid)
+    sessoes = q.order_by(PortalSession.created_at.desc()).all()
 
-    visitors_by_day = (
-        db.session.query(
-            cast(Visitor.created_at, Date).label("day"),
-            func.count().label("total"),
-        )
-        .filter(Visitor.created_at >= since)
-        .group_by(cast(Visitor.created_at, Date))
-        .order_by(cast(Visitor.created_at, Date))
-        .all()
-    )
-
-    date_range   = [(since + timedelta(days=i)).date() for i in range(days + 1)]
-    sessions_map = {str(r.day): (int(r.total), int(r.auth or 0)) for r in sessions_by_day}
-    visitors_map = {str(r.day): int(r.total) for r in visitors_by_day}
-
-    labels        = [d.strftime("%d/%m") for d in date_range]
-    sessions_data = [sessions_map.get(str(d), (0, 0))[0] for d in date_range]
-    auth_data     = [sessions_map.get(str(d), (0, 0))[1] for d in date_range]
-    new_vis_data  = [visitors_map.get(str(d), 0) for d in date_range]
-
-    total_s = sum(sessions_data)
-    total_a = sum(auth_data)
-    total_v = sum(new_vis_data)
-    rate    = round(total_a / total_s * 100, 1) if total_s else 0
-
-    device_rows = (
-        db.session.query(PortalSession.device_type, func.count().label("n"))
-        .filter(PortalSession.created_at >= since)
-        .group_by(PortalSession.device_type).all()
-    )
-    device_data = [{"name": r.device_type or "Desconhecido", "value": r.n} for r in device_rows]
-
-    os_rows = (
-        db.session.query(PortalSession.os_hint, func.count().label("n"))
-        .filter(PortalSession.created_at >= since)
-        .group_by(PortalSession.os_hint).all()
-    )
-    os_data = [{"name": r.os_hint or "Desconhecido", "value": r.n} for r in os_rows]
-
-    return jsonify({
-        "labels":       labels,
-        "sessions":     sessions_data,
-        "authorized":   auth_data,
-        "new_visitors": new_vis_data,
-        "totals": {
-            "sessions":     total_s,
-            "authorized":   total_a,
-            "new_visitors": total_v,
-            "auth_rate":    rate,
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Período", f"{de.strftime('%d/%m/%Y')} a {ate.strftime('%d/%m/%Y')}"])
+    w.writerow([])
+    w.writerow(["Loja", "Visitante", "CPF", "Rede", "Conexão", "Desconexão",
+                "Duração (min)", "Download (MB)", "Upload (MB)",
+                "Dispositivo", "Sistema", "IP", "MAC", "Status"])
+    for s in sessoes:
+        if s.is_active:
+            status = "Em curso"
+        elif s.authorized_at:
+            status = "Encerrada"
+        else:
+            status = "Não concluída"
+        w.writerow([
+            s.store.name if s.store else "",
+            s.visitor.full_name if s.visitor else "",
+            format_cpf(s.visitor.cpf) if s.visitor else "",
+            s.ssid or "",
+            fmt_datetime(s.authorized_at) if s.authorized_at else "",
+            fmt_datetime(s.expired_at) if s.expired_at else "",
+            s.duration if s.duration is not None else "",
+            round((s.bytes_down or 0) / 1048576, 2),
+            round((s.bytes_up or 0) / 1048576, 2),
+            s.device_type or "",
+            s.os_hint or "",
+            s.client_ip or "",
+            s.client_mac or "",
+            status,
+        ])
+    buf.seek(0)
+    return Response(
+        buf.getvalue(),
+        mimetype="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=relatorio_{de}_{ate}.csv",
+            "X-Content-Type-Options": "nosniff",
         },
-        "device_data": device_data,
-        "os_data":     os_data,
-    })
+    )
+
+
+@bp.get("/relatorios/buscar-visitante")
+@login_required
+def reports_find_visitor():
+    """Autocomplete do filtro por cliente."""
+    termo = request.args.get("q", "").strip()
+    if len(termo) < 2:
+        return jsonify([])
+    digitos = re.sub(r"\D", "", termo)
+    filtros = [Visitor.full_name.ilike(f"%{termo}%")]
+    if digitos:
+        filtros.append(Visitor.cpf.like(f"%{digitos}%"))
+        filtros.append(Visitor.mobile.like(f"%{digitos}%"))
+    achados = Visitor.query.filter(or_(*filtros)).limit(10).all()
+    return jsonify([
+        {"id": v.id, "nome": v.full_name, "cpf": format_cpf(v.cpf)}
+        for v in achados
+    ])
 
 
 # ─── Integrations ──────────────────────────────────────────────────────────────────────────────────
