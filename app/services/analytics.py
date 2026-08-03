@@ -174,6 +174,37 @@ def coletar(inicio, fim, de, ate, store_id=None, visitor_id=None) -> dict:
         {'name': '6+ visitas',   'value': sum(n for k, n in freq.items() if k >= 6)},
     ]
 
+    # ── Origem dos visitantes ─────────────────────────────────────────
+    # Amostra parcial por natureza: so entra quem autorizou a localizacao
+    # no navegador. A taxa de captura vai junto para nao ler os numeros
+    # como se representassem todo o publico.
+    com_local = [s for s in conexoes if s.latitude is not None and s.longitude is not None]
+    pontos = [
+        {'lat': float(s.latitude), 'lon': float(s.longitude),
+         'precisao': s.location_accuracy, 'km': s.distancia_da_loja}
+        for s in com_local
+    ]
+    distancias = sorted(p['km'] for p in pontos if p['km'] is not None)
+    faixas_km = [
+        ('até 1 km',    lambda d: d < 1),
+        ('1–5 km',      lambda d: 1 <= d < 5),
+        ('5–20 km',     lambda d: 5 <= d < 20),
+        ('20–50 km',    lambda d: 20 <= d < 50),
+        ('mais de 50 km', lambda d: d >= 50),
+    ]
+    origem = {
+        'pontos':        pontos,
+        'capturadas':    len(com_local),
+        'taxa_captura':  round(len(com_local) / len(conexoes) * 100, 1) if conexoes else 0,
+        'com_distancia': len(distancias),
+        'km_medio':      round(sum(distancias) / len(distancias), 1) if distancias else 0,
+        'km_mediana':    distancias[len(distancias) // 2] if distancias else 0,
+        'faixas': [
+            {'name': rotulo, 'value': sum(1 for d in distancias if teste(d))}
+            for rotulo, teste in faixas_km
+        ],
+    }
+
     dispositivos = Counter((s.device_type or 'Desconhecido') for s in conexoes)
     sistemas = Counter((s.os_hint or 'Desconhecido') for s in conexoes)
 
@@ -196,6 +227,7 @@ def coletar(inicio, fim, de, ate, store_id=None, visitor_id=None) -> dict:
             'bytes_total':    bytes_down + bytes_up,
             'bytes_medio':    round((bytes_down + bytes_up) / total_conexoes) if total_conexoes else 0,
         },
+        'origem':        origem,
         'tendencia':     tendencia,
         'heatmap':       heatmap,
         'por_hora':      por_hora,

@@ -130,3 +130,34 @@ def record_consent(visitor: Visitor, marketing_optin: bool = False, version: str
     visitor.terms_accepted_at = datetime.now(timezone.utc)
     visitor.terms_version     = version
     visitor.marketing_optin   = marketing_optin
+
+
+def refresh_consent(visitor: Visitor, version: str) -> bool:
+    """Atualiza o aceite quando o visitante ja cadastrado marca os termos.
+
+    O portal exige o aceite a cada acesso, mas so o cadastro novo gravava a
+    versao — quem se cadastrou antes ficava para sempre com a versao antiga,
+    ainda que estivesse aceitando a atual. Isso importa quando o texto muda:
+    sem atualizar, o registro diria que a pessoa consentiu com uma clausula
+    que ela nunca viu.
+    """
+    if visitor.terms_version == version:
+        return False
+
+    visitor.terms_accepted_at = datetime.now(timezone.utc)
+    visitor.terms_version     = version
+    try:
+        from app.models import ConsentEvent
+        db.session.add(ConsentEvent(
+            visitor_id=visitor.id,
+            event_type='UPDATE',
+            terms_version=version,
+            ip_address=flask_request.remote_addr,
+            user_agent=flask_request.headers.get('User-Agent', '')[:300],
+            channel='portal',
+            marketing_opt_in=visitor.marketing_optin,
+        ))
+    except Exception:
+        logger.warning('[consent] falha ao registrar evento de atualizacao', exc_info=True)
+    db.session.commit()
+    return True

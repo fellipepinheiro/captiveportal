@@ -324,7 +324,8 @@ def visitor_detail_export(vid: int):
     w.writerow(["Período", f"{de.strftime('%d/%m/%Y')} a {ate.strftime('%d/%m/%Y')}"])
     w.writerow([])
     w.writerow(["Loja", "Rede", "Conexão", "Desconexão", "Duração (min)",
-                "Dispositivo", "IP", "MAC", "Status"])
+                "Dispositivo", "IP", "MAC", "Latitude", "Longitude",
+                "Distância da loja (km)", "Status"])
     for s in sessoes:
         if s.is_active:
             status = "Em curso"
@@ -341,6 +342,9 @@ def visitor_detail_export(vid: int):
             f"{s.device_type or ''} {s.os_hint or ''}".strip(),
             s.client_ip or "",
             s.client_mac or "",
+            s.latitude if s.latitude is not None else "",
+            s.longitude if s.longitude is not None else "",
+            s.distancia_da_loja if s.distancia_da_loja is not None else "",
             status,
         ])
     buf.seek(0)
@@ -503,7 +507,8 @@ def reports_export():
     w.writerow([])
     w.writerow(["Loja", "Visitante", "CPF", "Rede", "Conexão", "Desconexão",
                 "Duração (min)", "Download (MB)", "Upload (MB)",
-                "Dispositivo", "Sistema", "IP", "MAC", "Status"])
+                "Dispositivo", "Sistema", "IP", "MAC",
+                "Latitude", "Longitude", "Distância da loja (km)", "Status"])
     for s in sessoes:
         if s.is_active:
             status = "Em curso"
@@ -525,6 +530,9 @@ def reports_export():
             s.os_hint or "",
             s.client_ip or "",
             s.client_mac or "",
+            s.latitude if s.latitude is not None else "",
+            s.longitude if s.longitude is not None else "",
+            s.distancia_da_loja if s.distancia_da_loja is not None else "",
             status,
         ])
     buf.seek(0)
@@ -774,6 +782,9 @@ def store_create():
         unifi_site_id=request.form.get("unifi_site_id", "").strip() or "default",
         unifi_verify_ssl=bool(request.form.get("unifi_verify_ssl")),
         session_minutes=request.form.get("session_minutes", type=int),
+        address=request.form.get("address", "").strip()[:255] or None,
+        latitude=request.form.get("latitude", type=float),
+        longitude=request.form.get("longitude", type=float),
         is_active=True,
     )
     db.session.add(store)
@@ -813,6 +824,9 @@ def store_update(sid: int):
     store.unifi_site_id    = request.form.get("unifi_site_id", "").strip() or "default"
     store.unifi_verify_ssl = bool(request.form.get("unifi_verify_ssl"))
     store.session_minutes  = request.form.get("session_minutes", type=int)
+    store.address          = request.form.get("address", "").strip()[:255] or None
+    store.latitude         = request.form.get("latitude", type=float)
+    store.longitude        = request.form.get("longitude", type=float)
 
     new_key = request.form.get("unifi_api_key", "").strip()
     if new_key:

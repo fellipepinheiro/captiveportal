@@ -66,6 +66,30 @@
 </div>
 
 <script>
+  // ── Localização de origem ─────────────────────────────────────────────
+  // Roda depois que o acesso já foi liberado: a coleta não pode atrasar
+  // nem condicionar a entrada na internet. Se o visitante recusar, se o
+  // navegador cativo bloquear a API ou se der timeout, segue em silêncio.
+  (function coletarOrigem() {
+    if (!navigator.geolocation) return;
+    navigator.geolocation.getCurrentPosition(
+      function (pos) {
+        fetch('{{ url_for("portal.registrar_localizacao") }}', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            lat: pos.coords.latitude,
+            lon: pos.coords.longitude,
+            precisao: pos.coords.accuracy,
+          }),
+          keepalive: true,   // a página redireciona em 5s; não perde o envio
+        }).catch(function () {});
+      },
+      function () {},        // recusa ou erro: nada a fazer
+      { enableHighAccuracy: false, timeout: 4000, maximumAge: 300000 }
+    );
+  })();
+
   const totalSeconds = 5;
   let elapsed = 0;
   const bar = document.getElementById('progress-bar');

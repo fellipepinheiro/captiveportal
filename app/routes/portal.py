@@ -1,13 +1,15 @@
+from datetime import datetime, timezone
+
 from flask import (
     Blueprint, render_template, request, redirect,
-    session, url_for, flash, current_app
+    session, url_for, flash, current_app, jsonify
 )
 from sqlalchemy.exc import IntegrityError
 from app.extensions import db, limiter, csrf
 from app.models import Visitor, PortalSession, Store
 from app.models.site_config import SiteConfig
 from app.services.portal_service import (
-    create_pending_session, authorize_visitor, record_consent
+    create_pending_session, authorize_visitor, record_consent, refresh_consent
 )
 from app.services.validator import (
     validate_cpf, validate_phone, validate_email, normalize_phone, normalize_cpf
@@ -134,6 +136,10 @@ def identify():
                 visitor.mobile = mobile_norm
                 db.session.commit()
 
+        # Ele marcou o aceite agora; se os termos mudaram desde o cadastro,
+        # o registro precisa refletir a versao que ele de fato aceitou.
+        refresh_consent(visitor, current_app.config.get("TERMS_VERSION", "1.0"))
+
         store = _get_session_store(portal_session)
         ok = authorize_visitor(portal_session, visitor, store)
         if ok:
@@ -167,6 +173,45 @@ def register():
         terms_version=current_app.config.get("TERMS_VERSION", "1.0"),
         **_portal_cfg(),
     )
+
+
+@bp.post("/guest/localizacao")
+@csrf.exempt
+@limiter.limit("20 per minute")
+def registrar_localizacao():
+    """Recebe a posicao informada pelo navegador do visitante.
+
+    Chamado da tela de sucesso, depois que o acesso ja foi liberado: a
+    coleta nao pode atrasar nem condicionar a entrada na internet. Quem
+    recusa a permissao simplesmente nao envia nada.
+    """
+    portal_session = _get_portal_session()
+    if not portal_session:
+        return jsonify({"ok": False}), 204
+
+    dados = request.get_json(silent=True) or {}
+    try:
+        lat = float(dados.get("lat"))
+        lon = float(dados.get("lon"))
+    except (TypeError, ValueError):
+        return jsonify({"ok": False, "erro": "coordenadas invalidas"}), 400
+
+    # Fora destas faixas nao e coordenada valida — descarta em vez de gravar
+    # sujeira que depois apareceria como ponto perdido no mapa.
+    if not (-90 <= lat <= 90) or not (-180 <= lon <= 180):
+        return jsonify({"ok": False, "erro": "coordenadas fora de faixa"}), 400
+
+    try:
+        precisao = int(float(dados.get("precisao") or 0))
+    except (TypeError, ValueError):
+        precisao = 0
+
+    portal_session.latitude = lat
+    portal_session.longitude = lon
+    portal_session.location_accuracy = precisao or None
+    portal_session.location_at = datetime.now(timezone.utc)
+    db.session.commit()
+    return jsonify({"ok": True})
 
 
 @bp.post("/guest/cadastro")

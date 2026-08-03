@@ -70,7 +70,38 @@
         </div>
       </div>
 
-      <label class="flex items-center gap-3">
+      <div class="pt-2 border-t border-white/5">
+        <label class="block text-xs text-slate-400 mb-1">Endereço da loja</label>
+        <input name="address" type="text" value="{{ store.address or '' if store else '' }}"
+               placeholder="Rua, número — bairro, cidade"
+               class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-100
+                      focus:outline-none focus:border-teal-500/50 transition">
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Latitude</label>
+          <input name="latitude" type="number" step="any" min="-90" max="90"
+                 value="{{ store.latitude if store and store.latitude is not none else '' }}"
+                 placeholder="-26.9187"
+                 class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-100
+                        focus:outline-none focus:border-teal-500/50 transition">
+        </div>
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Longitude</label>
+          <input name="longitude" type="number" step="any" min="-180" max="180"
+                 value="{{ store.longitude if store and store.longitude is not none else '' }}"
+                 placeholder="-49.0661"
+                 class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-100
+                        focus:outline-none focus:border-teal-500/50 transition">
+        </div>
+      </div>
+      <p class="text-xs text-slate-500 -mt-2">
+        Usadas para calcular a distância de onde vêm os visitantes. No Google Maps,
+        clique com o botão direito sobre a loja e copie as coordenadas.
+      </p>
+
+      <label class="flex items-center gap-3 pt-2 border-t border-white/5">
         <input type="checkbox" name="unifi_verify_ssl" id="unifi_verify_ssl"
                {% if store and store.unifi_verify_ssl %}checked{% endif %}
                class="h-4 w-4 rounded accent-teal-500">

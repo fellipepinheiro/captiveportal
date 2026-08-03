@@ -131,6 +131,32 @@
   </div>
 </div>
 
+<!-- ── Origem dos visitantes ───────────────────────────────────────────── -->
+<div class="grid lg:grid-cols-3 gap-4 mb-4">
+  <div class="lg:col-span-2 bg-slate-900 border border-white/5 rounded-2xl p-4">
+    <div class="flex items-start justify-between gap-3 mb-1">
+      <h2 class="text-white/70 text-xs uppercase tracking-wide">De onde vêm os visitantes</h2>
+      <span id="origem-captura" class="text-xs text-slate-500 whitespace-nowrap"></span>
+    </div>
+    <p class="text-xs text-slate-600 mb-3">Distância até a loja, entre quem autorizou a localização</p>
+    <div id="chartDistancia" style="height:230px"></div>
+  </div>
+  <div class="bg-slate-900 border border-white/5 rounded-2xl p-4 flex flex-col">
+    <h2 class="text-white/70 text-xs uppercase tracking-wide mb-3">Raio de influência</h2>
+    <div class="space-y-3">
+      <div>
+        <p class="text-xs text-slate-500">Distância média</p>
+        <p id="origem-media" class="text-2xl font-bold text-white tabular-nums">—</p>
+      </div>
+      <div>
+        <p class="text-xs text-slate-500">Mediana</p>
+        <p id="origem-mediana" class="text-lg font-semibold text-slate-300 tabular-nums">—</p>
+      </div>
+    </div>
+    <p id="origem-aviso" class="text-xs text-slate-600 mt-auto pt-3 leading-relaxed"></p>
+  </div>
+</div>
+
 <!-- ── Ranking de lojas ────────────────────────────────────────────────── -->
 <div class="bg-slate-900 border border-white/5 rounded-2xl overflow-hidden mb-4">
   <div class="px-4 py-3 border-b border-white/5">
@@ -197,7 +223,7 @@ const CORES = ['#14b8a6', '#6366f1', '#f59e0b', '#22c55e', '#ec4899', '#8b5cf6']
 const DIAS  = ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
 
 const graficos = {};
-['Tendencia','Heatmap','Frequencia','Permanencia','Dispositivos','Sistemas'].forEach(n => {
+['Tendencia','Heatmap','Frequencia','Permanencia','Dispositivos','Sistemas','Distancia'].forEach(n => {
   const el = document.getElementById('chart' + n);
   if (el) {
     graficos[n] = echarts.init(el, 'dark');
@@ -344,6 +370,37 @@ async function carregar() {
   });
   graficos.Dispositivos.setOption(pizza(d.dispositivos));
   graficos.Sistemas.setOption(pizza(d.sistemas));
+
+  // origem dos visitantes
+  const o = d.origem;
+  document.getElementById('origem-captura').textContent =
+    o.capturadas + ' de ' + k.conexoes + ' conexões (' + o.taxa_captura + '%)';
+  document.getElementById('origem-media').textContent =
+    o.com_distancia ? o.km_medio.toString().replace('.', ',') + ' km' : '—';
+  document.getElementById('origem-mediana').textContent =
+    o.com_distancia ? o.km_mediana.toString().replace('.', ',') + ' km' : '—';
+
+  const aviso = document.getElementById('origem-aviso');
+  if (!o.capturadas) {
+    aviso.textContent = 'Ninguém autorizou a localização no período. A coleta depende '
+      + 'da permissão do visitante e o navegador do portal cativo às vezes a bloqueia.';
+  } else if (!o.com_distancia) {
+    aviso.textContent = 'A loja precisa ter latitude e longitude cadastradas para que a '
+      + 'distância seja calculada.';
+  } else {
+    aviso.textContent = 'Amostra parcial: só entra quem autorizou a localização.';
+  }
+
+  graficos.Distancia.setOption({
+    tooltip: { trigger: 'axis' },
+    grid: { left: 88, right: 16, top: 10, bottom: 24 },
+    xAxis: { type: 'value', axisLabel: { color: '#64748b', fontSize: 10 },
+             splitLine: { lineStyle: { color: '#1e293b' } } },
+    yAxis: { type: 'category', data: o.faixas.map(x => x.name),
+             axisLabel: { color: '#94a3b8', fontSize: 10 } },
+    series: [{ type: 'bar', data: o.faixas.map(x => x.value),
+               itemStyle: { color: CORES[2], borderRadius: [0, 4, 4, 0] }, barWidth: '55%' }],
+  });
 
   const vazio = c => '<tr><td colspan="' + c + '" class="px-4 py-6 text-center text-xs text-slate-600">Sem dados no período</td></tr>';
 

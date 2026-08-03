@@ -45,8 +45,11 @@ def register_security_headers(app: Flask) -> None:
         response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
 
         # Desativa FLoC / Topics API
+        # geolocation=(self): o portal coleta a origem do visitante mediante
+        # consentimento. O navegador ainda exibe o proprio prompt de permissao
+        # — este cabecalho apenas deixa de bloquear a API antes disso.
         response.headers["Permissions-Policy"] = (
-            "geolocation=(), microphone=(), camera=(), payment=()"
+            "geolocation=(self), microphone=(), camera=(), payment=()"
         )
 
         # Remove header que revela a stack
