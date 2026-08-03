@@ -23,6 +23,13 @@ class PortalSession(db.Model):
     user_agent  = db.Column(db.String(300))
     device_type = db.Column(db.String(30))          # mobile | desktop | tablet
     os_hint     = db.Column(db.String(50))          # Android, iOS, Windows…
+    language    = db.Column(db.String(20))          # idioma preferido do navegador
+
+    # Geolocalizacao (informada pelo navegador, mediante consentimento)
+    latitude          = db.Column(db.Numeric(10, 7))
+    longitude         = db.Column(db.Numeric(10, 7))
+    location_accuracy = db.Column(db.Integer)   # raio de incerteza em metros
+    location_at       = db.Column(db.DateTime(timezone=True))
 
     # Estado
     authorized      = db.Column(db.Boolean, default=False, index=True)
@@ -106,6 +113,25 @@ class PortalSession(db.Model):
             if max_minutes:
                 minutos = min(minutos, max_minutes)
             self.duration_minutes = minutos
+
+    @property
+    def distancia_da_loja(self):
+        """Distancia em km entre o visitante e a loja, ou None.
+
+        Formula de haversine — precisao mais que suficiente para as
+        distancias envolvidas (raio de influencia de uma loja).
+        """
+        if self.latitude is None or self.longitude is None:
+            return None
+        loja = self.store
+        if not loja or loja.latitude is None or loja.longitude is None:
+            return None
+
+        from math import radians, sin, cos, asin, sqrt
+        lat1, lon1 = radians(float(self.latitude)), radians(float(self.longitude))
+        lat2, lon2 = radians(float(loja.latitude)), radians(float(loja.longitude))
+        a = sin((lat2 - lat1) / 2) ** 2 + cos(lat1) * cos(lat2) * sin((lon2 - lon1) / 2) ** 2
+        return round(6371 * 2 * asin(sqrt(a)), 2)
 
     @classmethod
     def detect_device(cls, ua: str) -> tuple[str, str]:

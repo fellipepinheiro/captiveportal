@@ -11,7 +11,7 @@ from flask import (
     url_for, flash, Response, jsonify, current_app, send_from_directory
 )
 from flask_login import login_user, logout_user, login_required, current_user
-from sqlalchemy import or_
+from sqlalchemy import or_, func
 from werkzeug.utils import secure_filename
 
 from app.extensions import db, limiter, csrf
@@ -324,7 +324,8 @@ def visitor_detail_export(vid: int):
     w.writerow(["Período", f"{de.strftime('%d/%m/%Y')} a {ate.strftime('%d/%m/%Y')}"])
     w.writerow([])
     w.writerow(["Loja", "Rede", "Conexão", "Desconexão", "Duração (min)",
-                "Dispositivo", "IP", "MAC", "Status"])
+                "Dispositivo", "IP", "MAC", "Latitude", "Longitude",
+                "Distância da loja (km)", "Status"])
     for s in sessoes:
         if s.is_active:
             status = "Em curso"
@@ -341,6 +342,9 @@ def visitor_detail_export(vid: int):
             f"{s.device_type or ''} {s.os_hint or ''}".strip(),
             s.client_ip or "",
             s.client_mac or "",
+            s.latitude if s.latitude is not None else "",
+            s.longitude if s.longitude is not None else "",
+            s.distancia_da_loja if s.distancia_da_loja is not None else "",
             status,
         ])
     buf.seek(0)
@@ -454,90 +458,111 @@ def export_visitors():
 @bp.get("/relatorios")
 @login_required
 def reports():
-    return render_template("admin/reports.html")
+    de, ate, _, _ = _periodo_do_request()
+    visitor = None
+    vid = request.args.get("visitante", type=int)
+    if vid:
+        visitor = Visitor.query.get(vid)
+    return render_template(
+        "admin/reports.html",
+        lojas=Store.query.order_by(Store.name).all(),
+        loja_id=request.args.get("loja", type=int),
+        visitante=visitor,
+        de=de.isoformat(), ate=ate.isoformat(),
+    )
 
 
 @bp.get("/relatorios/dados")
 @login_required
 def reports_data():
-    from sqlalchemy import func, cast, Date, case as sa_case
+    from app.services.analytics import coletar
 
-    try:
-        days = max(1, min(int(request.args.get("days", 30)), 365))
-    except (ValueError, TypeError):
-        days = 30
+    de, ate, inicio, fim = _periodo_do_request()
+    return jsonify(coletar(
+        inicio, fim, de, ate,
+        store_id=request.args.get("loja", type=int),
+        visitor_id=request.args.get("visitante", type=int),
+    ))
 
-    since = datetime.now(timezone.utc) - timedelta(days=days)
 
-    auth_expr = func.sum(
-        sa_case((PortalSession.authorized == True, 1), else_=0)
-    )
+@bp.get("/relatorios/exportar.csv")
+@login_required
+def reports_export():
+    """Exporta as sessoes do periodo com os mesmos filtros da tela."""
+    de, ate, inicio, fim = _periodo_do_request()
+    loja_id = request.args.get("loja", type=int)
+    vid = request.args.get("visitante", type=int)
 
-    sessions_by_day = (
-        db.session.query(
-            cast(PortalSession.created_at, Date).label("day"),
-            func.count().label("total"),
-            auth_expr.label("auth"),
-        )
-        .filter(PortalSession.created_at >= since)
-        .group_by(cast(PortalSession.created_at, Date))
-        .order_by(cast(PortalSession.created_at, Date))
-        .all()
-    )
+    q = (PortalSession.query
+         .filter(PortalSession.created_at >= inicio, PortalSession.created_at < fim))
+    if loja_id:
+        q = q.filter(PortalSession.store_id == loja_id)
+    if vid:
+        q = q.filter(PortalSession.visitor_id == vid)
+    sessoes = q.order_by(PortalSession.created_at.desc()).all()
 
-    visitors_by_day = (
-        db.session.query(
-            cast(Visitor.created_at, Date).label("day"),
-            func.count().label("total"),
-        )
-        .filter(Visitor.created_at >= since)
-        .group_by(cast(Visitor.created_at, Date))
-        .order_by(cast(Visitor.created_at, Date))
-        .all()
-    )
-
-    date_range   = [(since + timedelta(days=i)).date() for i in range(days + 1)]
-    sessions_map = {str(r.day): (int(r.total), int(r.auth or 0)) for r in sessions_by_day}
-    visitors_map = {str(r.day): int(r.total) for r in visitors_by_day}
-
-    labels        = [d.strftime("%d/%m") for d in date_range]
-    sessions_data = [sessions_map.get(str(d), (0, 0))[0] for d in date_range]
-    auth_data     = [sessions_map.get(str(d), (0, 0))[1] for d in date_range]
-    new_vis_data  = [visitors_map.get(str(d), 0) for d in date_range]
-
-    total_s = sum(sessions_data)
-    total_a = sum(auth_data)
-    total_v = sum(new_vis_data)
-    rate    = round(total_a / total_s * 100, 1) if total_s else 0
-
-    device_rows = (
-        db.session.query(PortalSession.device_type, func.count().label("n"))
-        .filter(PortalSession.created_at >= since)
-        .group_by(PortalSession.device_type).all()
-    )
-    device_data = [{"name": r.device_type or "Desconhecido", "value": r.n} for r in device_rows]
-
-    os_rows = (
-        db.session.query(PortalSession.os_hint, func.count().label("n"))
-        .filter(PortalSession.created_at >= since)
-        .group_by(PortalSession.os_hint).all()
-    )
-    os_data = [{"name": r.os_hint or "Desconhecido", "value": r.n} for r in os_rows]
-
-    return jsonify({
-        "labels":       labels,
-        "sessions":     sessions_data,
-        "authorized":   auth_data,
-        "new_visitors": new_vis_data,
-        "totals": {
-            "sessions":     total_s,
-            "authorized":   total_a,
-            "new_visitors": total_v,
-            "auth_rate":    rate,
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Período", f"{de.strftime('%d/%m/%Y')} a {ate.strftime('%d/%m/%Y')}"])
+    w.writerow([])
+    w.writerow(["Loja", "Visitante", "CPF", "Rede", "Conexão", "Desconexão",
+                "Duração (min)", "Download (MB)", "Upload (MB)",
+                "Dispositivo", "Sistema", "IP", "MAC",
+                "Latitude", "Longitude", "Distância da loja (km)", "Status"])
+    for s in sessoes:
+        if s.is_active:
+            status = "Em curso"
+        elif s.authorized_at:
+            status = "Encerrada"
+        else:
+            status = "Não concluída"
+        w.writerow([
+            s.store.name if s.store else "",
+            s.visitor.full_name if s.visitor else "",
+            format_cpf(s.visitor.cpf) if s.visitor else "",
+            s.ssid or "",
+            fmt_datetime(s.authorized_at) if s.authorized_at else "",
+            fmt_datetime(s.expired_at) if s.expired_at else "",
+            s.duration if s.duration is not None else "",
+            round((s.bytes_down or 0) / 1048576, 2),
+            round((s.bytes_up or 0) / 1048576, 2),
+            s.device_type or "",
+            s.os_hint or "",
+            s.client_ip or "",
+            s.client_mac or "",
+            s.latitude if s.latitude is not None else "",
+            s.longitude if s.longitude is not None else "",
+            s.distancia_da_loja if s.distancia_da_loja is not None else "",
+            status,
+        ])
+    buf.seek(0)
+    return Response(
+        buf.getvalue(),
+        mimetype="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=relatorio_{de}_{ate}.csv",
+            "X-Content-Type-Options": "nosniff",
         },
-        "device_data": device_data,
-        "os_data":     os_data,
-    })
+    )
+
+
+@bp.get("/relatorios/buscar-visitante")
+@login_required
+def reports_find_visitor():
+    """Autocomplete do filtro por cliente."""
+    termo = request.args.get("q", "").strip()
+    if len(termo) < 2:
+        return jsonify([])
+    digitos = re.sub(r"\D", "", termo)
+    filtros = [Visitor.full_name.ilike(f"%{termo}%")]
+    if digitos:
+        filtros.append(Visitor.cpf.like(f"%{digitos}%"))
+        filtros.append(Visitor.mobile.like(f"%{digitos}%"))
+    achados = Visitor.query.filter(or_(*filtros)).limit(10).all()
+    return jsonify([
+        {"id": v.id, "nome": v.full_name, "cpf": format_cpf(v.cpf)}
+        for v in achados
+    ])
 
 
 # ─── Integrations ──────────────────────────────────────────────────────────────────────────────────
@@ -724,7 +749,16 @@ _SLUG_RE = re.compile(r'^[a-z0-9-]{2,80}$')
 @login_required
 def stores():
     all_stores = Store.query.order_by(Store.name).all()
-    return render_template("admin/stores.html", stores=all_stores)
+
+    # Sessoes abertas por loja, em uma consulta so. E o que o portal
+    # registrou; o numero real do controlador aparece ao abrir a loja.
+    abertas = dict(
+        db.session.query(PortalSession.store_id, func.count())
+        .filter(PortalSession.authorized.is_(True))
+        .filter(PortalSession.expired_at.is_(None))
+        .group_by(PortalSession.store_id).all()
+    )
+    return render_template("admin/stores.html", stores=all_stores, abertas=abertas)
 
 
 @bp.get("/lojas/nova")
@@ -757,6 +791,9 @@ def store_create():
         unifi_site_id=request.form.get("unifi_site_id", "").strip() or "default",
         unifi_verify_ssl=bool(request.form.get("unifi_verify_ssl")),
         session_minutes=request.form.get("session_minutes", type=int),
+        address=request.form.get("address", "").strip()[:255] or None,
+        latitude=request.form.get("latitude", type=float),
+        longitude=request.form.get("longitude", type=float),
         is_active=True,
     )
     db.session.add(store)
@@ -796,6 +833,9 @@ def store_update(sid: int):
     store.unifi_site_id    = request.form.get("unifi_site_id", "").strip() or "default"
     store.unifi_verify_ssl = bool(request.form.get("unifi_verify_ssl"))
     store.session_minutes  = request.form.get("session_minutes", type=int)
+    store.address          = request.form.get("address", "").strip()[:255] or None
+    store.latitude         = request.form.get("latitude", type=float)
+    store.longitude        = request.form.get("longitude", type=float)
 
     new_key = request.form.get("unifi_api_key", "").strip()
     if new_key:
@@ -841,6 +881,158 @@ def store_test(sid: int):
         return jsonify({"ok": True, "mock": unifi.mock, "sites": sites})
     except UnifiAPIError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 502
+
+
+@bp.get("/lojas/<int:sid>/conexoes")
+@login_required
+def store_connections(sid: int):
+    """Quem esta com acesso liberado nesta loja, segundo o controlador.
+
+    A fonte e o controlador, nao o banco: o UniFi reautoriza sozinho um
+    dispositivo cuja janela de acesso ainda nao expirou, sem passar pelo
+    portal. Essas conexoes existem de fato mas nao tem sessao registrada —
+    e aparecem aqui marcadas como tal, senao a tela mostraria menos gente
+    conectada do que realmente esta usando a rede.
+    """
+    store = Store.query.get_or_404(sid)
+    unifi = get_unifi_for_store(store)
+    if unifi.mock:
+        return jsonify({"ok": True, "mock": True, "conexoes": []})
+
+    site_id = store.unifi_site_id or "default"
+    try:
+        clientes = unifi.list_clients(site_id)
+        trafego = unifi.get_client_traffic(unifi.site_name_from_id(site_id))
+    except UnifiAPIError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 502
+
+    ativos = [
+        c for c in clientes
+        if (c.get("access") or {}).get("authorized") is True
+    ]
+    macs = [(c.get("macAddress") or "").lower() for c in ativos]
+
+    # Uma consulta so para todas as sessoes abertas destes MACs
+    sessoes = {}
+    if macs:
+        for ps in (PortalSession.query
+                   .filter(func.lower(PortalSession.client_mac).in_(macs))
+                   .filter(PortalSession.authorized.is_(True))
+                   .filter(PortalSession.expired_at.is_(None))
+                   .order_by(PortalSession.id.desc()).all()):
+            sessoes.setdefault((ps.client_mac or "").lower(), ps)
+
+    conexoes = []
+    for c in ativos:
+        mac = (c.get("macAddress") or "").lower()
+        ps = sessoes.get(mac)
+        uso = trafego.get(mac) or {}
+        conexoes.append({
+            "mac":        mac,
+            "nome_rede":  c.get("name") or "",
+            "ip":         c.get("ipAddress") or "",
+            "desde":      c.get("connectedAt"),
+            "bytes":      (uso.get("rx") or 0) + (uso.get("tx") or 0),
+            "sessao_id":  ps.id if ps else None,
+            "visitante":  ps.visitor.full_name if ps and ps.visitor else None,
+            "visitante_id": ps.visitor_id if ps else None,
+            "inicio":     fmt_datetime(ps.authorized_at) if ps and ps.authorized_at else None,
+            "sem_sessao": ps is None,
+        })
+    conexoes.sort(key=lambda x: -x["bytes"])
+    return jsonify({"ok": True, "mock": False, "conexoes": conexoes})
+
+
+@bp.post("/lojas/<int:sid>/derrubar")
+@login_required
+@limiter.limit("30 per minute")
+def store_disconnect(sid: int):
+    """Derruba uma conexao desta loja pelo MAC.
+
+    Age pelo MAC e nao pelo id da sessao porque a conexao pode existir no
+    controlador sem sessao no portal (reautorizacao automatica). A sessao
+    local, quando houver, e encerrada junto.
+    """
+    store = Store.query.get_or_404(sid)
+    mac = (request.form.get("mac") or "").strip().lower()
+    if not mac:
+        return jsonify({"ok": False, "error": "MAC não informado"}), 400
+
+    site_id = store.unifi_site_id or "default"
+    try:
+        unifi = get_unifi_for_store(store)
+        cliente = unifi.find_client_by_mac(site_id, mac)
+        if not cliente or not cliente.get("id"):
+            msg = "Dispositivo já não está no controlador."
+        else:
+            try:
+                unifi.revoke_guest(site_id, cliente["id"])
+                msg = "Dispositivo desconectado."
+            except UnifiAPIError as exc:
+                if exc.code != "api.client.no-active-guest-authorization":
+                    raise
+                msg = "O dispositivo já estava sem acesso."
+    except UnifiAPIError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 502
+
+    encerradas = 0
+    for ps in (PortalSession.query
+               .filter(func.lower(PortalSession.client_mac) == mac)
+               .filter(PortalSession.authorized.is_(True))
+               .filter(PortalSession.expired_at.is_(None)).all()):
+        ps.close(max_minutes=store.session_minutes or
+                 current_app.config.get("UNIFI_SESSION_MINUTES", 480))
+        encerradas += 1
+    if encerradas:
+        db.session.commit()
+
+    return jsonify({"ok": True, "mensagem": msg, "sessoes_encerradas": encerradas})
+
+
+# ─── Auditoria (LGPD) ─────────────────────────────────────────────────────────
+
+@bp.get("/auditoria")
+@login_required
+def audit():
+    """Histórico de eventos para compliance e investigação.
+
+    Junta o audit_logs (tentativas de acesso e ações do painel) com o
+    consent_events (histórico de consentimento), que ate agora eram
+    gravados mas nao tinham como ser consultados.
+    """
+    from app.models import ConsentEvent
+
+    de, ate, inicio, fim = _periodo_do_request()
+    tipo = request.args.get("tipo", "").strip()
+    page = request.args.get("page", 1, type=int)
+
+    q = (AuditLog.query
+         .filter(AuditLog.created_at >= inicio, AuditLog.created_at < fim))
+    if tipo:
+        q = q.filter(AuditLog.event_type == tipo)
+    eventos = q.order_by(AuditLog.created_at.desc()).paginate(page=page, per_page=50)
+
+    # Os tipos vem do proprio historico: a lista cresce sozinha conforme
+    # novos eventos passam a ser registrados.
+    tipos = [t[0] for t in db.session.query(AuditLog.event_type)
+             .distinct().order_by(AuditLog.event_type).all()]
+
+    consentimentos = (ConsentEvent.query
+                      .filter(ConsentEvent.created_at >= inicio, ConsentEvent.created_at < fim)
+                      .order_by(ConsentEvent.created_at.desc()).limit(50).all())
+
+    visitantes = {}
+    ids = {e.visitor_id for e in eventos.items if e.visitor_id}
+    ids |= {c.visitor_id for c in consentimentos if c.visitor_id}
+    if ids:
+        visitantes = {v.id: v.full_name for v in Visitor.query.filter(Visitor.id.in_(ids)).all()}
+
+    return render_template(
+        "admin/audit.html",
+        eventos=eventos, tipos=tipos, tipo=tipo,
+        consentimentos=consentimentos, visitantes=visitantes,
+        de=de.isoformat(), ate=ate.isoformat(),
+    )
 
 
 # ─── Admin Users ──────────────────────────────────────────────────────────────────────────────────

@@ -4,10 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Login &mdash; Admin</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Servido localmente: o CSP nao libera CDN externo -->
+  <script src="{{ url_for('static', filename='vendor/tailwind.js') }}"></script>
   <style>
-    body { font-family: 'Inter', sans-serif; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+                        'Helvetica Neue', Arial, sans-serif; }
     input:-webkit-autofill {
       -webkit-box-shadow: 0 0 0 100px #1e293b inset;
       -webkit-text-fill-color: #f1f5f9;

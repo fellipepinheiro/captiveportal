@@ -24,6 +24,11 @@ class Store(db.Model):
     unifi_verify_ssl = db.Column(db.Boolean, default=False)
     session_minutes  = db.Column(db.Integer, nullable=True)  # None = usa o default global
 
+    # Localizacao da loja — referencia para calcular a distancia do visitante
+    address    = db.Column(db.String(255))
+    latitude   = db.Column(db.Numeric(10, 7))
+    longitude  = db.Column(db.Numeric(10, 7))
+
     is_active  = db.Column(db.Boolean, default=True, index=True)
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),

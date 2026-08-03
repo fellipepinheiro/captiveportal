@@ -23,6 +23,7 @@
           <th class="px-4 py-3 text-left font-medium">Loja</th>
           <th class="px-4 py-3 text-left font-medium">URL do portal</th>
           <th class="px-4 py-3 text-left font-medium">Controlador UniFi</th>
+          <th class="px-4 py-3 text-left font-medium">Conexões</th>
           <th class="px-4 py-3 text-left font-medium">Status</th>
           <th class="px-4 py-3 text-left font-medium">Ações</th>
         </tr>
@@ -36,6 +37,17 @@
           </td>
           <td class="px-4 py-3">
             <span class="text-xs text-slate-400 font-mono">{{ s.unifi_base_url or '—' }}</span>
+          </td>
+          <td class="px-4 py-3">
+            {% set n = abertas.get(s.id, 0) %}
+            {% if n %}
+              <a href="{{ url_for('admin.store_edit', sid=s.id) }}"
+                 class="inline-flex items-center gap-1.5 text-xs text-emerald-400 hover:underline">
+                <span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span> {{ n }} ativa{{ 's' if n > 1 }}
+              </a>
+            {% else %}
+              <span class="text-xs text-slate-600">—</span>
+            {% endif %}
           </td>
           <td class="px-4 py-3">
             {% if s.is_active %}
@@ -73,7 +85,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="5" class="px-4 py-8 text-center text-slate-600 text-sm">Nenhuma loja cadastrada.</td></tr>
+        <tr><td colspan="6" class="px-4 py-8 text-center text-slate-600 text-sm">Nenhuma loja cadastrada.</td></tr>
         {% endfor %}
       </tbody>
     </table>
