@@ -7,9 +7,12 @@ from flask import Flask, request
 
 CSP_POLICY = (
     "default-src 'self'; "
-    "script-src 'self' 'unsafe-inline' cdn.tailwindcss.com cdn.jsdelivr.net unpkg.com; "
-    "style-src 'self' 'unsafe-inline' fonts.googleapis.com cdn.tailwindcss.com cdn.jsdelivr.net; "
-    "font-src 'self' fonts.gstatic.com data:; "
+    # Tailwind e servido localmente (o portal precisa funcionar sem internet,
+    # antes do visitante ser autorizado). cdn.jsdelivr.net permanece apenas
+    # para o ECharts dos relatorios do admin.
+    "script-src 'self' 'unsafe-inline' cdn.jsdelivr.net; "
+    "style-src 'self' 'unsafe-inline'; "
+    "font-src 'self' data:; "
     "img-src 'self' data: blob:; "
     "connect-src 'self'; "
     "frame-ancestors 'none'; "

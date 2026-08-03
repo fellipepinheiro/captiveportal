@@ -1,14 +1,14 @@
 """admin_user profile fields: full_name, phone, email, avatar_path
 
 Revision ID: 20260527_0005
-Revises: 20260526_0004_missing_columns
+Revises: 20260526_0004
 Create Date: 2026-05-27
 """
 from alembic import op
 import sqlalchemy as sa
 
 revision = '20260527_0005'
-down_revision = '20260526_0004_missing_columns'
+down_revision = '20260526_0004'
 branch_labels = None
 depends_on = None
 

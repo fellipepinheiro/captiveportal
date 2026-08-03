@@ -1,50 +1,143 @@
 {% extends 'admin/base.html' %}
-{% block title %}Visitante{% endblock %}
+{% block title %}Extrato — {{ visitor.full_name }}{% endblock %}
 {% block content %}
+
 <div class="mb-6">
   <a href="{{ url_for('admin.visitors') }}" class="text-xs text-slate-400 hover:text-teal-300 transition">← Visitantes</a>
-  <h1 class="text-xl font-semibold mt-2">{{ visitor.full_name }}</h1>
+  <div class="flex items-start justify-between gap-4 mt-2">
+    <div>
+      <h1 class="text-xl font-semibold text-white">{{ visitor.full_name }}</h1>
+      <p class="text-sm text-slate-500 mt-0.5">
+        CPF {{ visitor.cpf | cpf }} · {{ visitor.mobile | telefone }}
+        {%- if visitor.email %} · {{ visitor.email }}{% endif %}
+        {%- if visitor.is_blocked %}
+        <span class="ml-1 text-xs bg-red-700/60 text-red-200 px-1.5 py-0.5 rounded">bloqueado</span>
+        {%- endif %}
+      </p>
+    </div>
+    <a href="{{ url_for('admin.visitor_detail_export', vid=visitor.id, de=de, ate=ate) }}"
+       class="shrink-0 rounded-xl border border-white/10 px-3 py-2 text-xs text-slate-300 hover:bg-white/10 transition">
+      ⬇ Exportar CSV
+    </a>
+  </div>
 </div>
 
-<div class="grid lg:grid-cols-2 gap-6">
-  <div class="bg-slate-900 border border-white/5 rounded-2xl p-6 space-y-3">
-    <h2 class="text-sm font-medium mb-2">Dados pessoais</h2>
-    <div class="flex justify-between text-sm">
-      <span class="text-slate-400">E-mail</span>
-      <span class="text-slate-200">{{ visitor.email }}</span>
-    </div>
-    <div class="flex justify-between text-sm">
-      <span class="text-slate-400">Celular</span>
-      <span class="text-slate-200">{{ visitor.mobile or '-' }}</span>
-    </div>
-    <div class="flex justify-between text-sm">
-      <span class="text-slate-400">Cadastrado em</span>
-      <span class="text-slate-200">{{ visitor.created_at.strftime('%d/%m/%Y %H:%M') }}</span>
-    </div>
-    <div class="flex justify-between text-sm">
-      <span class="text-slate-400">Status</span>
-      <span class="{% if visitor.is_active %}text-emerald-400{% else %}text-slate-500{% endif %}">
-        {{ 'Ativo' if visitor.is_active else 'Inativo' }}
-      </span>
-    </div>
+<!-- Período -->
+<form method="get" class="mb-5 flex flex-wrap items-end gap-3 bg-slate-900 border border-white/5 rounded-2xl p-4">
+  <div>
+    <label class="block text-xs text-slate-500 mb-1">De</label>
+    <input type="date" name="de" value="{{ de }}"
+           class="rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-slate-100
+                  focus:outline-none focus:border-teal-500/50 transition">
   </div>
+  <div>
+    <label class="block text-xs text-slate-500 mb-1">Até</label>
+    <input type="date" name="ate" value="{{ ate }}"
+           class="rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-slate-100
+                  focus:outline-none focus:border-teal-500/50 transition">
+  </div>
+  <button type="submit" class="rounded-xl px-4 py-2 text-sm font-semibold transition btn-accent">Aplicar</button>
+  <a href="{{ url_for('admin.visitor_detail', vid=visitor.id) }}"
+     class="rounded-xl border border-white/10 px-3 py-2 text-xs text-slate-400 hover:bg-white/10 transition">
+    Últimos 30 dias
+  </a>
+</form>
 
-  <div class="bg-slate-900 border border-white/5 rounded-2xl p-6">
-    <h2 class="text-sm font-medium mb-4">Sessões</h2>
-    <div class="space-y-2">
-      {% for s in visitor.sessions %}
-      <div class="flex items-center justify-between text-xs text-slate-400 border-b border-white/5 pb-2">
-        <span class="font-mono">{{ s.mac_client }}</span>
-        <span>{{ s.ssid or '-' }}</span>
-        <span class="{% if s.authorized %}text-emerald-400{% else %}text-amber-400{% endif %}">
-          {{ 'Autorizado' if s.authorized else 'Pendente' }}
-        </span>
-        <span>{{ s.created_at.strftime('%d/%m %H:%M') }}</span>
-      </div>
-      {% else %}
-      <p class="text-sm text-slate-500">Nenhuma sessão.</p>
-      {% endfor %}
-    </div>
+<!-- Resumo do período -->
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+  {% set cards = [
+    ('Acessos ao portal', resumo.acessos, 'vezes que abriu o portal'),
+    ('Conexões liberadas', resumo.autorizados, 'acessos que viraram conexão'),
+    ('Tempo conectado', (resumo.minutos_total // 60) ~ 'h ' ~ (resumo.minutos_total % 60) ~ 'min', 'somando o período'),
+    ('Média por conexão', resumo.minutos_medio ~ ' min', 'duração média'),
+  ] %}
+  {% for titulo, valor, ajuda in cards %}
+  <div class="bg-slate-900 border border-white/5 rounded-2xl p-5">
+    <p class="text-xs text-slate-500">{{ titulo }}</p>
+    <p class="text-2xl font-bold text-slate-100 mt-1">{{ valor }}</p>
+    <p class="text-xs text-slate-600 mt-0.5">{{ ajuda }}</p>
+  </div>
+  {% endfor %}
+</div>
+
+{% if resumo.nao_concluidos or resumo.em_curso %}
+<p class="text-xs text-slate-500 mb-4">
+  {% if resumo.em_curso %}{{ resumo.em_curso }} conexão(ões) em curso.{% endif %}
+  {% if resumo.nao_concluidos %}
+    {{ resumo.nao_concluidos }} acesso(s) não concluído(s) — abriu o portal mas não completou a identificação.
+  {% endif %}
+</p>
+{% endif %}
+
+<!-- Extrato -->
+<div class="bg-slate-900 border border-white/5 rounded-2xl overflow-hidden">
+  <div class="px-5 py-4 border-b border-white/5">
+    <h2 class="text-sm font-medium">Extrato de conexões</h2>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-xs text-slate-500 border-b border-white/5">
+          <th class="text-left px-5 py-3 font-medium">Conexão</th>
+          <th class="text-left px-5 py-3 font-medium">Desconexão</th>
+          <th class="text-left px-5 py-3 font-medium">Duração</th>
+          <th class="text-left px-5 py-3 font-medium hidden md:table-cell">Loja</th>
+          <th class="text-left px-5 py-3 font-medium hidden lg:table-cell">Rede</th>
+          <th class="text-left px-5 py-3 font-medium hidden lg:table-cell">Dispositivo</th>
+          <th class="text-left px-5 py-3 font-medium hidden xl:table-cell">MAC</th>
+          <th class="text-left px-5 py-3 font-medium">Status</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-white/5">
+        {% for s in sessoes %}
+        <tr class="hover:bg-white/3 transition">
+          <td class="px-5 py-3 text-xs text-slate-300 whitespace-nowrap">
+            {% if s.authorized_at %}{{ s.authorized_at | datahora }}
+            {% else %}<span class="text-slate-600">—</span>{% endif %}
+          </td>
+          <td class="px-5 py-3 text-xs text-slate-300 whitespace-nowrap">
+            {% if s.expired_at %}{{ s.expired_at | datahora }}
+            {% else %}<span class="text-slate-600">—</span>{% endif %}
+          </td>
+          <td class="px-5 py-3 text-xs text-slate-400 whitespace-nowrap">
+            {% set dur = s.duration %}
+            {% if dur is none %}
+              {% if s.is_active %}<span class="text-slate-600">em curso</span>
+              {% else %}<span class="text-slate-600">—</span>{% endif %}
+            {% elif dur < 1 %}<span class="text-slate-500">menos de 1 min</span>
+            {% elif dur < 60 %}{{ dur }} min
+            {% else %}{{ dur // 60 }}h {{ dur % 60 }}min{% endif %}
+          </td>
+          <td class="px-5 py-3 text-xs text-slate-400 hidden md:table-cell">{{ s.store.name if s.store else '—' }}</td>
+          <td class="px-5 py-3 text-xs text-slate-400 hidden lg:table-cell">{{ s.ssid or '—' }}</td>
+          <td class="px-5 py-3 hidden lg:table-cell">
+            {% if s.device_type %}
+            <span class="text-xs text-slate-400">
+              {% if s.device_type == 'mobile' %}📱{% elif s.device_type == 'tablet' %}📟{% else %}🖥{% endif %}
+              {{ s.os_hint or '' }}
+            </span>
+            {% else %}<span class="text-slate-600 text-xs">—</span>{% endif %}
+          </td>
+          <td class="px-5 py-3 text-xs text-slate-500 font-mono hidden xl:table-cell">{{ s.client_mac or '—' }}</td>
+          <td class="px-5 py-3">
+            {% if s.is_active %}
+              <span class="rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-500/15 text-emerald-400">Em curso</span>
+            {% elif s.authorized_at %}
+              <span class="rounded-full px-2 py-0.5 text-xs font-medium bg-slate-500/15 text-slate-400">Encerrada</span>
+            {% else %}
+              <span class="rounded-full px-2 py-0.5 text-xs font-medium bg-amber-500/10 text-amber-500/90">Não concluída</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr>
+          <td colspan="8" class="px-5 py-10 text-center text-sm text-slate-600">
+            Nenhum acesso registrado neste período.
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
   </div>
 </div>
 {% endblock %}

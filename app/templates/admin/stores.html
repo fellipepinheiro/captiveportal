@@ -1,0 +1,82 @@
+{% extends 'admin/base.html' %}
+{% block title %}Lojas{% endblock %}
+{% block content %}
+<div class="mb-6 flex items-center justify-between">
+  <div>
+    <h1 class="text-xl font-semibold text-white">Lojas</h1>
+    <p class="text-sm text-slate-500 mt-0.5">
+      Cada loja tem seu próprio controlador UniFi (UDM Pro). Configure o Hotspot Manager
+      de cada UDM Pro para apontar ao endereço externo do portal com o slug da loja.
+    </p>
+  </div>
+  <a href="{{ url_for('admin.store_new') }}"
+     class="rounded-xl px-4 py-2.5 text-sm font-semibold transition btn-accent whitespace-nowrap">
+    + Nova loja
+  </a>
+</div>
+
+<div class="bg-slate-900 border border-white/5 rounded-2xl overflow-hidden">
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead class="border-b border-white/5">
+        <tr class="text-xs text-slate-500">
+          <th class="px-4 py-3 text-left font-medium">Loja</th>
+          <th class="px-4 py-3 text-left font-medium">URL do portal</th>
+          <th class="px-4 py-3 text-left font-medium">Controlador UniFi</th>
+          <th class="px-4 py-3 text-left font-medium">Status</th>
+          <th class="px-4 py-3 text-left font-medium">Ações</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-white/5">
+        {% for s in stores %}
+        <tr class="hover:bg-white/3 transition">
+          <td class="px-4 py-3 font-medium text-slate-200">{{ s.name }}</td>
+          <td class="px-4 py-3">
+            <code class="text-xs text-slate-400">/guest/s/{{ s.slug }}/</code>
+          </td>
+          <td class="px-4 py-3">
+            <span class="text-xs text-slate-400 font-mono">{{ s.unifi_base_url or '—' }}</span>
+          </td>
+          <td class="px-4 py-3">
+            {% if s.is_active %}
+              <span class="inline-flex items-center gap-1.5 text-xs text-emerald-400 bg-emerald-500/10 border border-emerald-500/20 rounded-full px-2 py-0.5">
+                <span class="h-1.5 w-1.5 rounded-full bg-emerald-400"></span> Ativa
+              </span>
+            {% else %}
+              <span class="inline-flex items-center gap-1.5 text-xs text-slate-500 bg-white/5 border border-white/10 rounded-full px-2 py-0.5">
+                <span class="h-1.5 w-1.5 rounded-full bg-slate-600"></span> Inativa
+              </span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-3">
+            <div class="flex items-center gap-2">
+              <a href="{{ url_for('admin.store_edit', sid=s.id) }}"
+                 class="text-xs px-2.5 py-1 rounded-lg border border-white/10 text-slate-400 hover:bg-white/10 transition">
+                Editar
+              </a>
+              <form method="post" action="{{ url_for('admin.store_toggle', sid=s.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit"
+                        class="text-xs px-2.5 py-1 rounded-lg border border-white/10 text-slate-400 hover:bg-white/10 transition">
+                  {{ 'Desativar' if s.is_active else 'Ativar' }}
+                </button>
+              </form>
+              <form method="post" action="{{ url_for('admin.store_delete', sid=s.id) }}"
+                    onsubmit="return confirm('Excluir a loja {{ s.name }}?')">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button type="submit"
+                        class="text-xs px-2.5 py-1 rounded-lg border border-red-500/20 text-red-400 hover:bg-red-500/10 transition">
+                  Excluir
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" class="px-4 py-8 text-center text-slate-600 text-sm">Nenhuma loja cadastrada.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

@@ -32,22 +32,22 @@ def create_app(config_name=None):
     app.register_blueprint(admin_bp, url_prefix='/admin')
     app.register_blueprint(health_bp)
 
-    # Filtro Jinja2: converte datetime UTC -> America/Sao_Paulo
-    import zoneinfo
-    from datetime import timezone
+    # Filtros de exibicao: CPF e telefone sao gravados so com digitos
+    from app.services.validator import format_cpf, format_phone
+    app.jinja_env.filters['cpf'] = format_cpf
+    app.jinja_env.filters['telefone'] = format_phone
 
-    _TZ_BR = zoneinfo.ZoneInfo("America/Sao_Paulo")
+    # Datas sao gravadas em UTC — converte para o fuso local ao exibir.
+    # 'localtime' e mantido como alias (mesma assinatura) porque varios
+    # templates ja o usam; a diferenca e que o fuso agora vem de TIMEZONE
+    # em vez de ficar fixo em America/Sao_Paulo.
+    from app.services.datetime_fmt import fmt_datetime, fmt_short, fmt_date
+    app.jinja_env.filters['datahora'] = fmt_datetime
+    app.jinja_env.filters['datahora_curta'] = fmt_short
+    app.jinja_env.filters['data'] = fmt_date
+    app.jinja_env.filters['localtime'] = fmt_datetime
 
-    @app.template_filter("localtime")
-    def localtime_filter(dt, fmt="%d/%m/%Y %H:%M"):
-        """Converte um datetime UTC (naive ou aware) para America/Sao_Paulo."""
-        if dt is None:
-            return "—"
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(_TZ_BR).strftime(fmt)
-
-    # Context processor
+    # Context processor: injeta variaveis do portal em todos os templates
     @app.context_processor
     def inject_portal_vars():
         try:

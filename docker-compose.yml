@@ -40,6 +40,22 @@ services:
     networks:
       - internal
 
+  # Encerra as sessoes de quem saiu do wifi. A API do UniFi nao emite
+  # eventos de desconexao, entao o estado precisa ser conferido no
+  # controlador periodicamente. Sem isso o painel mostra como "Autorizado"
+  # quem ja foi embora. Ajuste o intervalo em SESSION_SYNC_INTERVAL.
+  session_sync:
+    build: .
+    container_name: unifi_portal_session_sync
+    command: ["flask", "sync-sessions", "--interval", "${SESSION_SYNC_INTERVAL:-120}"]
+    env_file: .env
+    restart: unless-stopped
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+    networks:
+      - internal
+
   web:
     build: .
     container_name: unifi_portal_web

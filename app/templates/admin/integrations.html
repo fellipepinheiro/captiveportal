@@ -9,64 +9,16 @@
 <form method="post" action="{{ url_for('admin.integrations_save') }}">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-  <!-- ═══ UniFi Nativo ═══════════════════════════════════════════════════════ -->
+  <!-- A configuracao do UniFi agora e por loja, em Lojas: cada UDM Pro tem
+       suas proprias credenciais. A configuracao global que existia aqui
+       usava um endpoint inexistente e nunca autorizava ninguem. -->
   <div class="bg-slate-900 border border-white/5 rounded-2xl p-6 max-w-2xl mb-6">
-    <div class="flex items-center justify-between mb-5">
-      <div>
-        <p class="text-slate-100 font-medium">Integração UniFi (API nativa)</p>
-        <p class="text-slate-400 text-xs mt-0.5">Autoriza clientes diretamente no Guest Portal do UCG Ultra via API Key.</p>
-      </div>
-      <label class="relative inline-flex items-center cursor-pointer">
-        <input type="checkbox" name="unifi_enabled" value="1" {% if unifi_enabled %}checked{% endif %} class="sr-only peer">
-        <div class="w-11 h-6 bg-white/20 peer-focus:ring-2 peer-focus:ring-teal-400 rounded-full peer peer-checked:bg-teal-600
-                    after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full
-                    after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5"></div>
-      </label>
-    </div>
-
-    <div class="grid grid-cols-1 gap-4 mb-4">
-      <!-- Host -->
-      <div>
-        <label class="block text-xs text-slate-400 mb-1">Host do UniFi</label>
-        <input type="url" name="unifi_host" value="{{ unifi_host }}"
-          placeholder="https://192.168.1.1"
-          class="w-full rounded-xl bg-white/5 border border-white/10 text-slate-100 px-4 py-2.5 text-sm placeholder-slate-600 focus:outline-none focus:border-teal-500/50 transition">
-        <p class="text-slate-500 text-xs mt-1">IP ou hostname do roteador UniFi (ex: <code class="bg-white/10 px-1 rounded">https://192.168.1.1</code>).</p>
-      </div>
-
-      <!-- API Key -->
-      <div>
-        <label class="block text-xs text-slate-400 mb-1">API Key</label>
-        <input type="password" name="unifi_api_key" value="{{ unifi_api_key }}"
-          placeholder="Cole a API Key gerada em Settings → Admins & Users"
-          autocomplete="new-password"
-          class="w-full rounded-xl bg-white/5 border border-white/10 text-slate-100 px-4 py-2.5 text-sm placeholder-slate-600 font-mono focus:outline-none focus:border-teal-500/50 transition">
-        <p class="text-slate-500 text-xs mt-1">
-          Gere em: <span class="text-slate-300">UniFi OS → Settings → Admins &amp; Users → [seu usuário] → API Key</span>.
-          Enviada como <code class="bg-white/10 px-1 rounded">X-API-KEY</code> em cada requisição.
-        </p>
-      </div>
-
-      <div class="grid grid-cols-2 gap-4">
-        <!-- Site ID -->
-        <div>
-          <label class="block text-xs text-slate-400 mb-1">Site ID</label>
-          <input type="text" name="unifi_site" value="{{ unifi_site }}"
-            placeholder="default"
-            class="w-full rounded-xl bg-white/5 border border-white/10 text-slate-100 px-4 py-2.5 text-sm placeholder-slate-600 font-mono focus:outline-none focus:border-teal-500/50 transition">
-          <p class="text-slate-500 text-xs mt-1">Normalmente <code class="bg-white/10 px-1 rounded">default</code>. Confira em Network → Settings → Site.</p>
-        </div>
-
-        <!-- Duração -->
-        <div>
-          <label class="block text-xs text-slate-400 mb-1">Duração da sessão (minutos)</label>
-          <input type="number" name="unifi_minutes" value="{{ unifi_minutes }}" min="1" max="44640"
-            placeholder="480"
-            class="w-full rounded-xl bg-white/5 border border-white/10 text-slate-100 px-4 py-2.5 text-sm placeholder-slate-600 focus:outline-none focus:border-teal-500/50 transition">
-          <p class="text-slate-500 text-xs mt-1">Padrão 480 min (8 h). Máx 44640 (31 dias).</p>
-        </div>
-      </div>
-    </div>
+    <p class="text-slate-300 text-sm font-medium mb-1">Integração UniFi</p>
+    <p class="text-slate-500 text-xs">
+      As credenciais do controlador agora são configuradas por loja, em
+      <a href="{{ url_for('admin.stores') }}" class="text-teal-400 hover:underline">Lojas</a>,
+      já que cada UDM Pro atende uma loja.
+    </p>
   </div>
 
   <!-- ═══ Webhook Genérico ══════════════════════════════════════════════════ -->
@@ -110,14 +62,6 @@
 <div class="bg-slate-900 border border-white/5 rounded-2xl p-6 max-w-2xl mb-6">
   <p class="text-slate-300 text-sm font-medium mb-4">Testar conectividade</p>
   <div class="flex flex-wrap gap-3">
-    <!-- Testar UniFi -->
-    <form method="post" action="{{ url_for('admin.integrations_test_unifi') }}">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-      <button type="submit"
-        class="rounded-xl border border-teal-500/30 bg-teal-500/10 px-5 py-2 text-sm text-teal-300 hover:bg-teal-500/20 transition">
-        Testar UniFi API
-      </button>
-    </form>
     <!-- Testar Webhook -->
     <form method="post" action="{{ url_for('admin.integrations_test') }}">
       <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">

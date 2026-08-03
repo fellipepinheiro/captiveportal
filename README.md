@@ -7,9 +7,9 @@ Portal de autenticação de visitantes para redes Wi-Fi corporativas, integrado 
 ## ✨ Funcionalidades
 
 ### Portal público (visitante)
-- Tela de identificação com validação de **e-mail** e **celular** (formato BR)
-- Cadastro completo com **nome, CPF, e-mail e celular**
-- Validação de CPF (dígitos verificadores)
+- Tela de identificação por **CPF** e **celular** (formato BR)
+- Cadastro com **nome completo** e **e-mail opcional**
+- Validação de CPF (dígitos verificadores); busca aceita com ou sem máscara
 - Aceite de **Termos de Uso** e **Política de Privacidade** com registro de versão (LGPD)
 - Opt-in de comunicações de marketing
 - Redirecionamento automático pós-autorização
@@ -17,16 +17,20 @@ Portal de autenticação de visitantes para redes Wi-Fi corporativas, integrado 
 ### Painel administrativo (`/admin`)
 - **Dashboard** com KPIs em tempo real (total de visitantes, sessões, taxa de autorização)
 - **Relatórios** com gráficos interativos por período, distribuição por dispositivo e sistema operacional
-- **Gestão de visitantes** — busca, filtro, bloqueio/desbloqueio com motivo, exportação CSV
+- **Gestão de visitantes** — busca por nome/CPF/celular/e-mail, bloqueio/desbloqueio com motivo, exclusão de cadastro (LGPD) e exportação CSV
+- **Extrato por visitante** — conexões e desconexões em um período, com duração e exportação CSV
+- **Lojas** — cadastro de várias controladoras UDM Pro, uma por loja, com teste de conexão
 - **Gestão de usuários** admin — criar, ativar/desativar, redefinir senha, excluir
 - **Perfil pessoal** — nome, e-mail, telefone, foto de perfil (compressão automática via Pillow) e **alteração de senha com verificação da senha atual**
 - **Aparência do portal** — título, mensagem de boas-vindas, cores e logo customizáveis
-- **Integrações** — UniFi API Key e Webhook com HMAC-SHA256, com botões de teste
+- **Integrações** — Webhook com HMAC-SHA256 e botão de teste
+  (as credenciais do UniFi ficam em **Lojas**, por controlador)
 
 ### Integração UniFi
-- Autorização de clientes via API REST (`/proxy/network/integration/v1/sites/{site}/guests`)
-- Configuração de duração da sessão em minutos
-- Suporte a certificados auto-assinados (`UNIFI_VERIFY_SSL=false`)
+- Autorização via API REST de integração, autenticando por header `X-API-KEY`
+- Credenciais **por loja**: cada UDM Pro tem URL, API Key, Site ID e duração próprios
+- Encerramento automático das sessões de quem sai do Wi-Fi (serviço `session_sync`)
+- Suporte a certificados auto-assinados (por loja)
 
 ### Segurança
 - Senhas com hash **bcrypt**
@@ -191,11 +195,11 @@ https://seu-dominio.com.br/admin
 [UniFi AP]
     │  redireciona para /guest/s/default/?id={MAC}&ap={AP}&ssid={SSID}&url={URL}
     ▼
-[Entry] ── visitante informa e-mail + celular + aceite de termos
+[Entry] ── visitante informa CPF + celular + aceite de termos
     │
     ├── já cadastrado? ──► [Autorização UniFi] ──► [Sucesso + redirect]
     │
-    └── novo visitante? ──► [Cadastro: nome + CPF] ──► [Autorização UniFi] ──► [Sucesso + redirect]
+    └── novo visitante? ──► [Cadastro: nome + e-mail opcional] ──► [Autorização UniFi] ──► [Sucesso + redirect]
 ```
 
 O portal cria um `PortalSession` com o MAC do cliente ao receber o redirect do AP. Após identificação/cadastro, a função `authorize_visitor` chama a UniFi API para liberar o acesso na rede.
@@ -206,16 +210,21 @@ O portal cria um `PortalSession` com o MAC do cliente ao receber o redirect do A
 
 A integração usa a **API REST moderna do UniFi Network** (não a API legada via cookie de sessão).
 
-Configure em `Admin → Integrações`:
+Configure em `Admin → Lojas`, uma entrada por controlador:
 
 | Campo | Descrição |
 |---|---|
-| Host UniFi | URL base do controller (ex: `https://192.168.1.1`) |
-| API Key | Gerada em **Settings → Admins → API Keys** no painel UniFi |
-| Site | ID do site UniFi (padrão: `default`) |
-| Duração da sessão | Tempo de acesso em minutos (ex: `480` = 8 horas) |
+| Slug | Identifica a loja na URL do portal (`/guest/s/<slug>/`) |
+| URL do controlador | Inclui o caminho da API: `https://192.168.1.1/proxy/network/integration` |
+| API Key | Gerada em **Settings → Control Plane → Integrations** no UniFi |
+| Site ID | O **UUID** do site, não o nome. O botão *Testar conexão* mostra qual usar |
+| Duração da sessão | Minutos de acesso; em branco usa o padrão global |
 
-Use o botão **Testar conexão** antes de salvar para validar a chave e a URL.
+No Hotspot Manager de cada UDM Pro, aponte o *External Portal Server* para o
+IP do servidor. O controlador monta `http://<ip>/guest/s/<site>/` sozinho —
+por isso o portal precisa responder na **porta 80**.
+
+Use **Testar conexão** para validar a chave e descobrir o Site ID.
 
 ---
 

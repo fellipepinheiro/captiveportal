@@ -2,7 +2,7 @@ import csv
 import io
 import os
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -11,11 +11,15 @@ from flask import (
     url_for, flash, Response, jsonify, current_app, send_from_directory
 )
 from flask_login import login_user, logout_user, login_required, current_user
+from sqlalchemy import or_
 from werkzeug.utils import secure_filename
 
 from app.extensions import db, limiter, csrf
-from app.models import Visitor, PortalSession, AdminUser
+from app.models import Visitor, PortalSession, AdminUser, Store, AuditLog
 from app.models.site_config import SiteConfig
+from app.services.unifi_api import get_unifi_for_store, UnifiAPIError
+from app.services.datetime_fmt import fmt_datetime, get_tz
+from app.services.validator import format_cpf
 
 bp = Blueprint("admin", __name__)
 
@@ -133,7 +137,9 @@ def login_post():
     password = request.form.get("password", "")
     user = AdminUser.query.filter_by(username=username, is_active=True).first()
     if user and user.check_password(password):
-        user.last_login = datetime.now(LOCAL_TZ).replace(tzinfo=None)
+        # Gravado em UTC como todos os demais timestamps; a conversao para
+        # o fuso local acontece na exibicao, pelo filtro `datahora`.
+        user.last_login = datetime.now(timezone.utc)
         db.session.commit()
         login_user(user, remember=False)
         return redirect(url_for("admin.dashboard"))
@@ -172,23 +178,47 @@ def dashboard():
     )
 
 
-# ─── Sessions ───────────────────────────────────────────────────────────────────────────────
+# ─── Sessões ─────────────────────────────────────────────────────────────────
+
+@bp.post("/sessoes/<int:sid>/derrubar")
+@login_required
+@limiter.limit("30 per minute")
+def session_revoke(sid: int):
+    """Desconecta no controlador um dispositivo com acesso liberado."""
+    from app.services.portal_service import revoke_session
+
+    ps = PortalSession.query.get_or_404(sid)
+    if not ps.authorized:
+        flash("Essa sessão já não está autorizada.", "error")
+        return redirect(request.referrer or url_for("admin.dashboard"))
+
+    store = Store.query.get(ps.store_id) if ps.store_id else None
+    ok, msg = revoke_session(ps, store)
+    flash(msg, "success" if ok else "error")
+    return redirect(request.referrer or url_for("admin.dashboard"))
+
 
 @bp.post("/sessoes/<int:sid>/apagar")
 @login_required
 def session_delete(sid: int):
-    """Apaga uma sessão pending específica do dashboard."""
+    """Apaga do banco uma sessão que nunca chegou a ser autorizada.
+
+    O criterio e authorized_at, nao authorized: uma sessao encerrada
+    tambem fica com authorized False, e apagar essas destruiria o
+    historico de conexoes que o extrato do visitante mostra.
+    """
     portal_session = PortalSession.query.get_or_404(sid)
-    if portal_session.authorized:
-        flash("Não é possível apagar uma sessão já autorizada.", "error")
-        return redirect(url_for("admin.dashboard"))
+    if portal_session.authorized_at:
+        flash("Só é possível apagar acessos que nunca foram autorizados. "
+              "Para encerrar uma conexão ativa, use 'Derrubar'.", "error")
+        return redirect(request.referrer or url_for("admin.dashboard"))
     db.session.delete(portal_session)
     db.session.commit()
-    flash("Sessão pendente removida.", "success")
-    return redirect(url_for("admin.dashboard"))
+    flash("Acesso pendente removido.", "success")
+    return redirect(request.referrer or url_for("admin.dashboard"))
 
 
-# ─── Visitors ───────────────────────────────────────────────────────────────────────────────
+# ─── Visitors ────────────────────────────────────────────────────────────────
 
 @bp.get("/visitantes")
 @login_required
@@ -198,10 +228,16 @@ def visitors():
     show_blocked = request.args.get("blocked", "") == "1"
     query        = Visitor.query.order_by(Visitor.created_at.desc())
     if q:
-        query = query.filter(
-            (Visitor.full_name.ilike(f"%{q}%")) |
-            (Visitor.email.ilike(f"%{q}%"))
-        )
+        # CPF/telefone sao gravados so com digitos — busca pelo termo normalizado
+        digits = re.sub(r"\D", "", q)
+        filters = [
+            Visitor.full_name.ilike(f"%{q}%"),
+            Visitor.email.ilike(f"%{q}%"),
+        ]
+        if digits:
+            filters.append(Visitor.cpf.like(f"%{digits}%"))
+            filters.append(Visitor.mobile.like(f"%{digits}%"))
+        query = query.filter(or_(*filters))
     if show_blocked:
         query = query.filter(Visitor.is_blocked == True)
     pagination = query.paginate(page=page, per_page=25)
@@ -210,6 +246,112 @@ def visitors():
         pagination=pagination,
         q=q,
         show_blocked=show_blocked,
+    )
+
+
+def _periodo_do_request():
+    """Le de/ate da querystring. Padrao: ultimos 30 dias.
+
+    As datas chegam no fuso local (é o que o admin digita) e viram UTC,
+    que e como os timestamps estao gravados.
+    """
+    hoje_local = datetime.now(get_tz()).date()
+    try:
+        ate = date.fromisoformat(request.args.get("ate", "")) if request.args.get("ate") else hoje_local
+    except ValueError:
+        ate = hoje_local
+    try:
+        de = date.fromisoformat(request.args.get("de", "")) if request.args.get("de") else ate - timedelta(days=29)
+    except ValueError:
+        de = ate - timedelta(days=29)
+    if de > ate:
+        de, ate = ate, de
+
+    tz = get_tz()
+    inicio = datetime.combine(de, time.min, tzinfo=tz).astimezone(timezone.utc)
+    # 'ate' e inclusivo: vai ate o fim daquele dia
+    fim = datetime.combine(ate + timedelta(days=1), time.min, tzinfo=tz).astimezone(timezone.utc)
+    return de, ate, inicio, fim
+
+
+def _extrato_sessoes(visitor_id: int, inicio, fim):
+    """Sessoes do visitante no periodo, da mais recente para a mais antiga."""
+    return (
+        PortalSession.query
+        .filter(PortalSession.visitor_id == visitor_id)
+        .filter(PortalSession.created_at >= inicio, PortalSession.created_at < fim)
+        .order_by(PortalSession.created_at.desc())
+        .all()
+    )
+
+
+@bp.get("/visitantes/<int:vid>")
+@login_required
+def visitor_detail(vid: int):
+    """Extrato de conexoes/desconexoes do visitante no periodo."""
+    visitor = Visitor.query.get_or_404(vid)
+    de, ate, inicio, fim = _periodo_do_request()
+    sessoes = _extrato_sessoes(vid, inicio, fim)
+
+    autorizadas = [s for s in sessoes if s.authorized_at]
+    minutos = sum(s.duration or 0 for s in autorizadas)
+    resumo = {
+        "acessos":        len(sessoes),
+        "autorizados":    len(autorizadas),
+        "nao_concluidos": len(sessoes) - len(autorizadas),
+        "em_curso":       sum(1 for s in sessoes if s.is_active),
+        "minutos_total":  minutos,
+        "minutos_medio":  round(minutos / len(autorizadas)) if autorizadas else 0,
+    }
+    return render_template(
+        "admin/visitor_detail.html",
+        visitor=visitor, sessoes=sessoes, resumo=resumo,
+        de=de.isoformat(), ate=ate.isoformat(),
+    )
+
+
+@bp.get("/visitantes/<int:vid>/extrato.csv")
+@login_required
+def visitor_detail_export(vid: int):
+    visitor = Visitor.query.get_or_404(vid)
+    de, ate, inicio, fim = _periodo_do_request()
+    sessoes = _extrato_sessoes(vid, inicio, fim)
+
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["Visitante", visitor.full_name])
+    w.writerow(["CPF", format_cpf(visitor.cpf)])
+    w.writerow(["Período", f"{de.strftime('%d/%m/%Y')} a {ate.strftime('%d/%m/%Y')}"])
+    w.writerow([])
+    w.writerow(["Loja", "Rede", "Conexão", "Desconexão", "Duração (min)",
+                "Dispositivo", "IP", "MAC", "Status"])
+    for s in sessoes:
+        if s.is_active:
+            status = "Em curso"
+        elif s.authorized_at:
+            status = "Encerrada"
+        else:
+            status = "Não concluída"
+        w.writerow([
+            s.store.name if s.store else "",
+            s.ssid or "",
+            fmt_datetime(s.authorized_at) if s.authorized_at else "",
+            fmt_datetime(s.expired_at) if s.expired_at else "",
+            s.duration if s.duration is not None else "",
+            f"{s.device_type or ''} {s.os_hint or ''}".strip(),
+            s.client_ip or "",
+            s.client_mac or "",
+            status,
+        ])
+    buf.seek(0)
+    nome = re.sub(r"[^\w.-]", "_", visitor.full_name)[:40]
+    return Response(
+        buf.getvalue(),
+        mimetype="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=extrato_{nome}_{de}_{ate}.csv",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
 
 
@@ -236,6 +378,50 @@ def visitor_unblock(vid: int):
     return redirect(url_for("admin.visitors"))
 
 
+@bp.post("/visitantes/<int:vid>/excluir")
+@login_required
+def visitor_delete(vid: int):
+    """Exclui o cadastro do visitante (LGPD Art. 18, direito a exclusao).
+
+    Os registros de conexao (portal_sessions) NAO sao apagados: o Marco
+    Civil da Internet (Lei 12.965/2014, Art. 15) obriga a guarda desses
+    logs. Eles apenas deixam de apontar para o visitante, ficando
+    anonimos — sem nome, CPF, telefone ou e-mail associados.
+    """
+    visitor = Visitor.query.get_or_404(vid)
+    nome = visitor.full_name
+
+    try:
+        # Desvincula os logs em vez de apaga-los
+        PortalSession.query.filter_by(visitor_id=visitor.id).update(
+            {"visitor_id": None}, synchronize_session=False
+        )
+        AuditLog.query.filter_by(visitor_id=visitor.id).update(
+            {"visitor_id": None}, synchronize_session=False
+        )
+        # Consentimentos (consent_events) saem junto por cascade: sao dados
+        # pessoais e perdem o sentido sem o titular.
+        db.session.delete(visitor)
+
+        db.session.add(AuditLog(
+            event_type="VISITOR_DELETED",
+            status="SUCCESS",
+            payload=f"visitante '{nome}' (id={vid}) excluido pelo painel",
+            actor=current_user.username,
+            ip_address=request.remote_addr,
+        ))
+        db.session.commit()
+    except Exception as exc:
+        db.session.rollback()
+        current_app.logger.error("falha ao excluir visitante %s: %s", vid, exc)
+        flash("Não foi possível excluir o cadastro.", "error")
+        return redirect(url_for("admin.visitors"))
+
+    flash(f"Cadastro de '{nome}' excluído. Os registros de acesso foram mantidos "
+          f"de forma anônima, conforme o Marco Civil da Internet.", "success")
+    return redirect(url_for("admin.visitors"))
+
+
 @bp.get("/visitantes/export")
 @login_required
 def export_visitors():
@@ -246,11 +432,11 @@ def export_visitors():
                 "Visitas", "Último acesso", "Bloqueado", "Cadastrado em"])
     for v in visitors_list:
         w.writerow([
-            v.id, v.full_name, v.email, v.mobile, v.cpf,
+            v.id, v.full_name, v.email or "", v.mobile, v.cpf,
             v.visit_count or 0,
-            v.last_seen.isoformat() if v.last_seen else "",
+            fmt_datetime(v.last_seen) if v.last_seen else "",
             "Sim" if v.is_blocked else "Não",
-            v.created_at,
+            fmt_datetime(v.created_at),
         ])
     buf.seek(0)
     return Response(
@@ -364,11 +550,6 @@ def integrations():
         webhook_url=SiteConfig.get("webhook_url", ""),
         webhook_secret=SiteConfig.get("webhook_secret", ""),
         webhook_enabled=SiteConfig.get("webhook_enabled", "false") == "true",
-        unifi_enabled=SiteConfig.get("unifi_enabled", "false") == "true",
-        unifi_host=SiteConfig.get("unifi_host", "https://192.168.1.1"),
-        unifi_api_key=SiteConfig.get("unifi_api_key", ""),
-        unifi_site=SiteConfig.get("unifi_site", "default"),
-        unifi_minutes=SiteConfig.get("unifi_minutes", "480"),
     )
 
 
@@ -382,20 +563,6 @@ def integrations_save():
     SiteConfig.set("webhook_url",     webhook_url)
     SiteConfig.set("webhook_secret",  request.form.get("webhook_secret", "").strip())
     SiteConfig.set("webhook_enabled", "true" if request.form.get("webhook_enabled") else "false")
-
-    unifi_host = request.form.get("unifi_host", "").strip().rstrip("/")
-    if unifi_host and not re.match(r'^https?://', unifi_host):
-        flash("Host UniFi deve começar com https://", "error")
-        return redirect(url_for("admin.integrations"))
-    SiteConfig.set("unifi_enabled",  "true" if request.form.get("unifi_enabled") else "false")
-    SiteConfig.set("unifi_host",     unifi_host)
-    SiteConfig.set("unifi_api_key",  request.form.get("unifi_api_key", "").strip())
-    SiteConfig.set("unifi_site",     request.form.get("unifi_site", "default").strip() or "default")
-    try:
-        mins = max(1, min(int(request.form.get("unifi_minutes", "480")), 44640))
-    except (ValueError, TypeError):
-        mins = 480
-    SiteConfig.set("unifi_minutes",  str(mins))
 
     db.session.commit()
     flash("Configurações de integração salvas.", "success")
@@ -445,97 +612,6 @@ def integrations_test():
     except Exception as exc:
         flash(f"Falha ao enviar webhook: {exc}", "error")
     return redirect(url_for("admin.integrations"))
-
-
-@bp.post("/integracoes/testar-unifi")
-@login_required
-@limiter.limit("5 per minute")
-def integrations_test_unifi():
-    import requests as req_lib
-    import warnings
-
-    host    = SiteConfig.get("unifi_host", "").strip().rstrip("/")
-    api_key = SiteConfig.get("unifi_api_key", "").strip()
-
-    if not host or not api_key:
-        flash("Configure o Host e a API Key do UniFi antes de testar.", "error")
-        return redirect(url_for("admin.integrations"))
-
-    verify_ssl = os.environ.get("UNIFI_VERIFY_SSL", "false").lower() != "true"
-
-    try:
-        if not verify_ssl:
-            warnings.filterwarnings("ignore", message="Unverified HTTPS request")
-        resp = req_lib.get(
-            f"{host}/proxy/network/integration/v1/sites",
-            headers={"X-API-KEY": api_key, "Accept": "application/json"},
-            timeout=8,
-            verify=not verify_ssl,
-        )
-        if resp.status_code == 200:
-            sites = resp.json().get("data", [])
-            names = ", ".join(s.get("name", s.get("id", "?")) for s in sites[:5]) or "(nenhum)"
-            flash(f"Conexão UniFi OK! Sites encontrados: {names}", "success")
-        elif resp.status_code == 401:
-            flash("UniFi recusou a API Key (HTTP 401). Verifique se a chave está correta.", "error")
-        elif resp.status_code == 403:
-            flash("UniFi negou acesso (HTTP 403). Verifique as permissões da API Key.", "error")
-        else:
-            flash(f"UniFi respondeu HTTP {resp.status_code}: {resp.text[:200]}", "error")
-    except Exception as exc:
-        flash(f"Falha ao conectar no UniFi: {exc}", "error")
-    return redirect(url_for("admin.integrations"))
-
-
-def unifi_authorize_client(
-    client_mac: str,
-    client_ip: str | None = None,
-    minutes: int | None = None,
-) -> tuple[bool, str]:
-    import requests as req_lib
-    import warnings
-
-    if SiteConfig.get("unifi_enabled", "false") != "true":
-        return False, "Integração UniFi desativada."
-
-    host    = SiteConfig.get("unifi_host", "").strip().rstrip("/")
-    api_key = SiteConfig.get("unifi_api_key", "").strip()
-    site    = SiteConfig.get("unifi_site", "default").strip() or "default"
-    if minutes is None:
-        try:
-            minutes = int(SiteConfig.get("unifi_minutes", "480"))
-        except (ValueError, TypeError):
-            minutes = 480
-
-    if not host or not api_key:
-        return False, "Host ou API Key do UniFi não configurados."
-
-    verify_ssl = os.environ.get("UNIFI_VERIFY_SSL", "false").lower() != "true"
-
-    payload = {"mac": client_mac, "minutes": minutes}
-    if client_ip:
-        payload["ip"] = client_ip
-
-    try:
-        if not verify_ssl:
-            warnings.filterwarnings("ignore", message="Unverified HTTPS request")
-        resp = req_lib.post(
-            f"{host}/proxy/network/integration/v1/sites/{site}/guests",
-            json=payload,
-            headers={
-                "X-API-KEY":    api_key,
-                "Accept":       "application/json",
-                "Content-Type": "application/json",
-            },
-            timeout=10,
-            verify=not verify_ssl,
-        )
-        if resp.status_code in (200, 201):
-            return True, f"Cliente {client_mac} autorizado no UniFi ({minutes} min)."
-        else:
-            return False, f"UniFi recusou: HTTP {resp.status_code} — {resp.text[:300]}"
-    except Exception as exc:
-        return False, f"Erro ao comunicar com UniFi: {exc}"
 
 
 # ─── Appearance ───────────────────────────────────────────────────────────────────────────────────
@@ -637,6 +713,134 @@ def remove_logo():
     db.session.commit()
     flash("Logo removida.", "success")
     return redirect(url_for("admin.settings_appearance"))
+
+
+# ─── Lojas (UDM Pro por loja) ─────────────────────────────────────────────────
+
+_SLUG_RE = re.compile(r'^[a-z0-9-]{2,80}$')
+
+
+@bp.get("/lojas")
+@login_required
+def stores():
+    all_stores = Store.query.order_by(Store.name).all()
+    return render_template("admin/stores.html", stores=all_stores)
+
+
+@bp.get("/lojas/nova")
+@login_required
+def store_new():
+    return render_template("admin/store_form.html", store=None)
+
+
+@bp.post("/lojas/nova")
+@login_required
+def store_create():
+    name = request.form.get("name", "").strip()[:120]
+    slug = request.form.get("slug", "").strip().lower() or Store.slugify(name)
+
+    if not name:
+        flash("Informe o nome da loja.", "error")
+        return redirect(url_for("admin.store_new"))
+    if not _SLUG_RE.match(slug):
+        flash("Slug inválido. Use apenas letras minúsculas, números e hífen.", "error")
+        return redirect(url_for("admin.store_new"))
+    if Store.query.filter_by(slug=slug).first():
+        flash(f"Já existe uma loja com o slug '{slug}'.", "error")
+        return redirect(url_for("admin.store_new"))
+
+    store = Store(
+        name=name,
+        slug=slug,
+        unifi_base_url=request.form.get("unifi_base_url", "").strip(),
+        unifi_api_key=request.form.get("unifi_api_key", "").strip(),
+        unifi_site_id=request.form.get("unifi_site_id", "").strip() or "default",
+        unifi_verify_ssl=bool(request.form.get("unifi_verify_ssl")),
+        session_minutes=request.form.get("session_minutes", type=int),
+        is_active=True,
+    )
+    db.session.add(store)
+    db.session.commit()
+    flash(f"Loja '{store.name}' criada. Configure o Hotspot Manager do UDM Pro dessa loja "
+          f"para usar /guest/s/{store.slug}/.", "success")
+    return redirect(url_for("admin.stores"))
+
+
+@bp.get("/lojas/<int:sid>/editar")
+@login_required
+def store_edit(sid: int):
+    store = Store.query.get_or_404(sid)
+    return render_template("admin/store_form.html", store=store)
+
+
+@bp.post("/lojas/<int:sid>/editar")
+@login_required
+def store_update(sid: int):
+    store = Store.query.get_or_404(sid)
+    name = request.form.get("name", "").strip()[:120]
+    slug = request.form.get("slug", "").strip().lower()
+
+    if not name:
+        flash("Informe o nome da loja.", "error")
+        return redirect(url_for("admin.store_edit", sid=sid))
+    if not _SLUG_RE.match(slug):
+        flash("Slug inválido. Use apenas letras minúsculas, números e hífen.", "error")
+        return redirect(url_for("admin.store_edit", sid=sid))
+    if Store.query.filter(Store.slug == slug, Store.id != sid).first():
+        flash(f"Já existe uma loja com o slug '{slug}'.", "error")
+        return redirect(url_for("admin.store_edit", sid=sid))
+
+    store.name             = name
+    store.slug             = slug
+    store.unifi_base_url   = request.form.get("unifi_base_url", "").strip()
+    store.unifi_site_id    = request.form.get("unifi_site_id", "").strip() or "default"
+    store.unifi_verify_ssl = bool(request.form.get("unifi_verify_ssl"))
+    store.session_minutes  = request.form.get("session_minutes", type=int)
+
+    new_key = request.form.get("unifi_api_key", "").strip()
+    if new_key:
+        store.unifi_api_key = new_key
+
+    db.session.commit()
+    flash(f"Loja '{store.name}' atualizada.", "success")
+    return redirect(url_for("admin.stores"))
+
+
+@bp.post("/lojas/<int:sid>/toggle")
+@login_required
+def store_toggle(sid: int):
+    store = Store.query.get_or_404(sid)
+    store.is_active = not store.is_active
+    db.session.commit()
+    status = "ativada" if store.is_active else "desativada"
+    flash(f"Loja '{store.name}' {status}.", "success")
+    return redirect(url_for("admin.stores"))
+
+
+@bp.post("/lojas/<int:sid>/excluir")
+@login_required
+def store_delete(sid: int):
+    store = Store.query.get_or_404(sid)
+    if PortalSession.query.filter_by(store_id=store.id).first():
+        flash(f"Loja '{store.name}' possui sessões registradas — desative-a em vez de excluir.", "error")
+        return redirect(url_for("admin.stores"))
+    db.session.delete(store)
+    db.session.commit()
+    flash(f"Loja '{store.name}' excluída.", "success")
+    return redirect(url_for("admin.stores"))
+
+
+@bp.post("/lojas/<int:sid>/testar")
+@login_required
+@limiter.limit("10 per minute")
+def store_test(sid: int):
+    store = Store.query.get_or_404(sid)
+    try:
+        unifi = get_unifi_for_store(store)
+        sites = unifi.get_sites()
+        return jsonify({"ok": True, "mock": unifi.mock, "sites": sites})
+    except UnifiAPIError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 502
 
 
 # ─── Admin Users ──────────────────────────────────────────────────────────────────────────────────

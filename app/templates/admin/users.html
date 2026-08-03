@@ -45,7 +45,7 @@
             {% else %}bg-slate-500/15 text-slate-400{% endif %}">{{ u.role }}</span>
         </td>
         <td class="px-5 py-3 text-xs text-slate-400">
-          {% if u.last_login %}{{ u.last_login.strftime('%d/%m/%Y %H:%M') }}{% else %}—{% endif %}
+          {{ u.last_login | datahora }}
         </td>
         <td class="px-5 py-3">
           <div class="flex justify-center gap-1.5 flex-wrap">
@@ -99,7 +99,7 @@
         {% else %}bg-slate-500/15 text-slate-400{% endif %}">{{ u.role }}</span>
     </div>
     <p class="text-xs text-slate-500 mb-3">
-      {% if u.last_login %}Último acesso: {{ u.last_login.strftime('%d/%m/%Y %H:%M') }}{% else %}Nunca acessou{% endif %}
+      {% if u.last_login %}Último acesso: {{ u.last_login | datahora }}{% else %}Nunca acessou{% endif %}
     </p>
     {% if u.id != current_user.id %}
     <div class="flex gap-2 pt-2 border-t border-white/8 flex-wrap">

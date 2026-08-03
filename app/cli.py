@@ -1,3 +1,5 @@
+import time
+
 import click
 from flask.cli import with_appcontext
 from app.extensions import db
@@ -21,22 +23,47 @@ def register_commands(app):
         db.session.commit()
         click.echo(f"Admin '{username}' criado com sucesso!")
 
+    @app.cli.command("sync-sessions")
+    @click.option("--interval", type=int, default=0,
+                  help="Repete a cada N segundos. 0 (padrao) executa uma vez e sai.")
+    @with_appcontext
+    def sync_sessions(interval):
+        """Encerra as sessoes de quem ja saiu do wifi.
+
+        A API do UniFi nao avisa quando um cliente desconecta, entao o
+        estado precisa ser conferido no controlador de tempos em tempos.
+        """
+        from app.services.session_sync import sync_all
+
+        while True:
+            for slug, resultado in sync_all().items():
+                click.echo(f"[{slug}] {resultado}")
+            if not interval:
+                break
+            time.sleep(interval)
+
     @app.cli.command("cleanup-sessions")
     @click.option("--pending-ttl", default=30, show_default=True,
-                  help="Minutos até expirar sessões nunca autorizadas.")
-    @click.option("--expired-ttl", default=90, show_default=True,
-                  help="Dias até purgar sessões já expiradas.")
+                  help="Minutos até remover sessões que nunca foram autorizadas.")
+    @click.option("--expired-ttl", default=365, show_default=True,
+                  help="Dias até purgar sessões encerradas. O Marco Civil (Art. 15) "
+                       "exige guardar registros de conexão por 1 ano.")
     @with_appcontext
     def cleanup_sessions(pending_ttl, expired_ttl):
-        """Remove sessões pendentes antigas e purga sessões expiradas há muito tempo."""
+        """Remove sessões abandonadas e purga registros antigos de conexão."""
         from datetime import datetime, timezone, timedelta
         from app.models.portal_session import PortalSession
 
         cutoff_pending = datetime.now(timezone.utc) - timedelta(minutes=pending_ttl)
         cutoff_expired = datetime.now(timezone.utc) - timedelta(days=expired_ttl)
 
+        # Abandonadas = abriram o portal e nunca concluiram a identificacao.
+        # O criterio e authorized_at IS NULL, nao authorized == False: uma
+        # sessao encerrada tambem fica com authorized False, e apagar essas
+        # destruiria o historico de conexoes (o extrato do visitante e o
+        # registro que o Marco Civil obriga a guardar).
         n_pending = PortalSession.query.filter(
-            PortalSession.authorized == False,
+            PortalSession.authorized_at.is_(None),
             PortalSession.created_at < cutoff_pending
         ).delete(synchronize_session=False)
 
@@ -46,4 +73,5 @@ def register_commands(app):
         ).delete(synchronize_session=False)
 
         db.session.commit()
-        click.echo(f"Limpeza concluída: {n_pending} pendentes removidas, {n_expired} expiradas purgadas.")
+        click.echo(f"Limpeza concluída: {n_pending} abandonadas removidas, "
+                   f"{n_expired} registros antigos purgados.")

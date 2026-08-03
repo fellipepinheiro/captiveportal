@@ -1,0 +1,165 @@
+{% extends 'admin/base.html' %}
+{% block title %}{{ 'Editar loja' if store else 'Nova loja' }}{% endblock %}
+{% block content %}
+<div class="mb-6">
+  <a href="{{ url_for('admin.stores') }}" class="text-xs text-slate-400 hover:text-teal-300 transition">← Lojas</a>
+  <h1 class="text-xl font-semibold text-white mt-2">{{ 'Editar loja' if store else 'Nova loja' }}</h1>
+</div>
+
+<div class="max-w-xl space-y-6">
+  <div class="bg-slate-900 border border-white/5 rounded-2xl p-6">
+    <form method="post"
+          action="{{ url_for('admin.store_update', sid=store.id) if store else url_for('admin.store_create') }}"
+          class="space-y-4" id="store-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">Nome da loja</label>
+        <input name="name" type="text" required value="{{ store.name if store else '' }}"
+               placeholder="Ex: Loja Centro"
+               class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-100
+                      focus:outline-none focus:border-teal-500/50 transition">
+      </div>
+
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">Slug (identifica a loja na URL do portal)</label>
+        <input name="slug" type="text" required pattern="[a-z0-9-]{2,80}"
+               value="{{ store.slug if store else '' }}"
+               placeholder="loja-centro"
+               class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-100 font-mono
+                      focus:outline-none focus:border-teal-500/50 transition">
+        <p class="text-xs text-slate-500 mt-1">
+          Configure no Hotspot Manager do UDM Pro desta loja a URL externa do portal como
+          <code class="text-slate-400">.../guest/s/<span id="slug-preview">{{ store.slug if store else 'slug' }}</span>/</code>
+        </p>
+      </div>
+
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">URL do controlador UniFi (UDM Pro)</label>
+        <input name="unifi_base_url" type="url" value="{{ store.unifi_base_url if store else '' }}"
+               placeholder="https://192.168.1.1/proxy/network/integration"
+               class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-100
+                      focus:outline-none focus:border-teal-500/50 transition">
+      </div>
+
+      <div>
+        <label class="block text-xs text-slate-400 mb-1">
+          API Key {% if store %}<span class="text-slate-500 font-normal">(deixe em branco para manter a atual)</span>{% endif %}
+        </label>
+        <input name="unifi_api_key" type="password" autocomplete="new-password"
+               placeholder="{{ '••••••••••••' if store and store.unifi_api_key else 'Token de acesso à API UniFi' }}"
+               class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-100
+                      focus:outline-none focus:border-teal-500/50 transition">
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Site ID</label>
+          <input name="unifi_site_id" type="text" value="{{ store.unifi_site_id if store else 'default' }}"
+                 placeholder="default"
+                 class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-100
+                        focus:outline-none focus:border-teal-500/50 transition">
+        </div>
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Tempo de sessão (min)</label>
+          <input name="session_minutes" type="number" min="1" max="99999"
+                 value="{{ store.session_minutes if store and store.session_minutes else '' }}"
+                 placeholder="480 (padrão global)"
+                 class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-100
+                        focus:outline-none focus:border-teal-500/50 transition">
+        </div>
+      </div>
+
+      <label class="flex items-center gap-3">
+        <input type="checkbox" name="unifi_verify_ssl" id="unifi_verify_ssl"
+               {% if store and store.unifi_verify_ssl %}checked{% endif %}
+               class="h-4 w-4 rounded accent-teal-500">
+        <span class="text-sm text-slate-300">Verificar certificado SSL do controlador</span>
+      </label>
+      <p class="text-xs text-slate-500 -mt-2">
+        Deixe desmarcado se o UDM Pro usa certificado autoassinado (padrão de fábrica).
+      </p>
+
+      <div class="flex gap-3 pt-2">
+        <button type="submit" class="flex-1 rounded-xl py-2.5 text-sm font-semibold transition btn-accent">
+          {{ 'Salvar alterações' if store else 'Criar loja' }}
+        </button>
+        {% if store %}
+        <button type="button" id="test-btn"
+                class="rounded-xl border border-white/20 bg-white/5 px-5 py-2.5 text-sm hover:bg-white/10 transition">
+          Testar conexão
+        </button>
+        {% endif %}
+      </div>
+    </form>
+
+    {% if store %}
+    <div id="test-result" class="hidden mt-4 rounded-2xl border px-5 py-4 text-sm"></div>
+    {% endif %}
+  </div>
+</div>
+
+{% if store %}
+<script>
+document.getElementById('test-btn').addEventListener('click', async () => {
+  const res = document.getElementById('test-result');
+  res.className = 'mt-4 rounded-2xl border px-5 py-4 text-sm';
+  res.textContent = 'Testando…';
+  res.classList.remove('hidden');
+  try {
+    const r = await fetch('{{ url_for("admin.store_test", sid=store.id) }}', {
+      method: 'POST',
+      headers: {'X-CSRFToken': '{{ csrf_token() }}'},
+    });
+    const data = await r.json();
+    if (data.ok) {
+      res.classList.add('border-teal-400/30', 'bg-teal-500/10', 'text-teal-100');
+      const sites = data.sites || [];
+      res.innerHTML = '';
+      const head = document.createElement('p');
+      head.textContent = data.mock
+        ? '⚠ Modo mock ativo — nenhuma chamada real foi feita ao controlador.'
+        : '✓ Conexão OK — sites encontrados:';
+      res.appendChild(head);
+      if (!data.mock) {
+        sites.forEach(function(s){
+          const line = document.createElement('p');
+          line.className = 'mt-1 text-xs';
+          line.textContent = '• ' + (s.name || '(sem nome)') + ' → Site ID: ' + s.id;
+          res.appendChild(line);
+        });
+        if (!sites.length) {
+          const line = document.createElement('p');
+          line.className = 'mt-1 text-xs';
+          line.textContent = '(nenhum site retornado)';
+          res.appendChild(line);
+        }
+      }
+    } else {
+      res.classList.add('border-rose-400/30', 'bg-rose-500/10', 'text-rose-200');
+      res.textContent = '✗ Erro: ' + (data.error || 'Falha desconhecida');
+    }
+  } catch (e) {
+    res.classList.add('border-rose-400/30', 'bg-rose-500/10', 'text-rose-200');
+    res.textContent = '✗ Erro de rede: ' + e.message;
+  }
+});
+</script>
+{% endif %}
+
+<script>
+  const nameInput = document.querySelector('[name="name"]');
+  const slugInput = document.querySelector('[name="slug"]');
+  const slugPreview = document.getElementById('slug-preview');
+  {% if not store %}
+  nameInput.addEventListener('input', () => {
+    const slug = nameInput.value.toLowerCase()
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    slugInput.value = slug;
+    slugPreview.textContent = slug || 'slug';
+  });
+  {% endif %}
+  slugInput.addEventListener('input', () => { slugPreview.textContent = slugInput.value || 'slug'; });
+</script>
+{% endblock %}

@@ -53,11 +53,11 @@ class Visitor(db.Model):
     # ------------------------------------------------------------------ #
 
     @classmethod
-    def create(cls, full_name, email, mobile, cpf,
+    def create(cls, full_name, mobile, cpf, email=None,
                terms_version=None, marketing_optin=False):
         v = cls(
             full_name=full_name,
-            email=email,
+            email=email or None,
             mobile=mobile,
             cpf=cpf,
             terms_accepted_at=datetime.now(timezone.utc),
@@ -69,10 +69,8 @@ class Visitor(db.Model):
         return v
 
     @classmethod
-    def find_by_email_or_mobile(cls, email: str, mobile: str):
-        return cls.query.filter(
-            (cls.email == email) | (cls.mobile == mobile)
-        ).first()
+    def find_by_cpf(cls, cpf: str):
+        return cls.query.filter_by(cpf=cpf).first()
 
     def touch(self):
         """Atualiza contadores de visita."""

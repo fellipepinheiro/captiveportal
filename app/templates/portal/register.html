@@ -27,13 +27,13 @@
   <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Dados informados</p>
   <div class="flex items-center gap-2 text-sm">
     <svg class="h-3.5 w-3.5 shrink-0 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-      <rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
-    <span class="text-slate-300 truncate">{{ email }}</span>
+      <rect width="18" height="14" x="3" y="5" rx="2"/><path d="M3 10h18"/></svg>
+    <span class="text-slate-300 truncate">{{ cpf | cpf }}</span>
   </div>
   <div class="flex items-center gap-2 text-sm">
     <svg class="h-3.5 w-3.5 shrink-0 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <rect width="14" height="20" x="5" y="2" rx="2"/><path d="M12 18h.01"/></svg>
-    <span class="text-slate-300">{{ mobile }}</span>
+    <span class="text-slate-300">{{ mobile | telefone }}</span>
   </div>
 </div>
 
@@ -58,22 +58,26 @@
     <p class="mt-1 hidden text-xs text-rose-400" id="name-error">Informe seu nome completo (mínimo 2 palavras).</p>
   </div>
 
-  <!-- CPF -->
+  <!-- E-mail (opcional) -->
   <div>
-    <label for="cpf" class="mb-1.5 block text-sm font-medium text-slate-300">CPF</label>
+    <label for="email" class="mb-1.5 block text-sm font-medium text-slate-300">
+      E-mail <span class="text-slate-500 font-normal">(opcional)</span>
+    </label>
     <div class="relative">
       <span class="pointer-events-none absolute inset-y-0 left-3.5 flex items-center">
-        <svg class="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect width="18" height="14" x="3" y="5" rx="2"/><path d="M3 10h18"/>
+        <svg class="h-4 w-4 text-slate-500" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" stroke-width="2">
+          <rect width="20" height="16" x="2" y="4" rx="2"/>
+          <path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>
         </svg>
       </span>
-      <input id="cpf" name="cpf" type="text" required
-             autocomplete="off" inputmode="numeric"
-             class="input-field pl-10" placeholder="000.000.000-00"
-             maxlength="14"
-             value="{{ request.form.get('cpf', '') }}">
+      <input id="email" name="email" type="email"
+             autocomplete="email" inputmode="email"
+             class="input-field pl-10"
+             placeholder="voce@exemplo.com"
+             value="{{ request.form.get('email', '') }}">
     </div>
-    <p class="mt-1 hidden text-xs text-rose-400" id="cpf-error">Informe um CPF válido.</p>
+    <p class="mt-1 hidden text-xs text-rose-400" id="email-error">Informe um e-mail válido.</p>
   </div>
 
   <!-- Marketing opt-in -->
@@ -97,43 +101,20 @@
 </form>
 
 <script>
-  // CPF mask
-  const cpfInput = document.getElementById('cpf');
-  cpfInput.addEventListener('input', function() {
-    let v = this.value.replace(/\D/g, '');
-    if (v.length > 11) v = v.slice(0, 11);
-    if (v.length > 9) v = `${v.slice(0,3)}.${v.slice(3,6)}.${v.slice(6,9)}-${v.slice(9)}`;
-    else if (v.length > 6) v = `${v.slice(0,3)}.${v.slice(3,6)}.${v.slice(6)}`;
-    else if (v.length > 3) v = `${v.slice(0,3)}.${v.slice(3)}`;
-    this.value = v;
-  });
-
-  function validarCPF(cpf) {
-    const c = cpf.replace(/\D/g, '');
-    if (c.length !== 11 || /^(\d)\1+$/.test(c)) return false;
-    let s = 0;
-    for (let i = 0; i < 9; i++) s += parseInt(c[i]) * (10 - i);
-    let r = (s * 10) % 11; if (r === 10 || r === 11) r = 0;
-    if (r !== parseInt(c[9])) return false;
-    s = 0;
-    for (let i = 0; i < 10; i++) s += parseInt(c[i]) * (11 - i);
-    r = (s * 10) % 11; if (r === 10 || r === 11) r = 0;
-    return r === parseInt(c[10]);
-  }
-
   document.getElementById('form-register').addEventListener('submit', function(e) {
     let valid = true;
-    const nameInput = document.getElementById('full_name');
-    const nameErr   = document.getElementById('name-error');
-    const cpfErr    = document.getElementById('cpf-error');
+    const nameInput  = document.getElementById('full_name');
+    const nameErr    = document.getElementById('name-error');
+    const emailInput = document.getElementById('email');
+    const emailErr   = document.getElementById('email-error');
 
     if (!nameInput.value.trim() || nameInput.value.trim().split(' ').filter(Boolean).length < 2) {
       nameInput.classList.add('error'); nameErr.classList.remove('hidden'); valid = false;
     } else { nameInput.classList.remove('error'); nameErr.classList.add('hidden'); }
 
-    if (!validarCPF(cpfInput.value)) {
-      cpfInput.classList.add('error'); cpfErr.classList.remove('hidden'); valid = false;
-    } else { cpfInput.classList.remove('error'); cpfErr.classList.add('hidden'); }
+    if (emailInput.value && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput.value)) {
+      emailInput.classList.add('error'); emailErr.classList.remove('hidden'); valid = false;
+    } else { emailInput.classList.remove('error'); emailErr.classList.add('hidden'); }
 
     if (!valid) { e.preventDefault(); return; }
     const btn = document.getElementById('btn-register');

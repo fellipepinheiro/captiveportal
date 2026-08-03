@@ -7,3 +7,6 @@ certbot/conf/
 certbot/www/
 *.log
 .DS_Store
+
+# Override local (teste com controlador UniFi real)
+docker-compose.override.yml

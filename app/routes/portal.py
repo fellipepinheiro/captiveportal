@@ -4,12 +4,14 @@ from flask import (
 )
 from sqlalchemy.exc import IntegrityError
 from app.extensions import db, limiter, csrf
-from app.models import Visitor, PortalSession
+from app.models import Visitor, PortalSession, Store
 from app.models.site_config import SiteConfig
 from app.services.portal_service import (
     create_pending_session, authorize_visitor, record_consent
 )
-from app.services.validator import validate_cpf, validate_phone, normalize_phone
+from app.services.validator import (
+    validate_cpf, validate_phone, validate_email, normalize_phone, normalize_cpf
+)
 
 bp = Blueprint("portal", __name__)
 PORTAL_SESSION_KEY = "portal_session_id"
@@ -44,17 +46,38 @@ def _get_portal_session():
     return PortalSession.query.get(sid)
 
 
-@bp.get("/guest/s/default/")
+def _get_session_store(portal_session):
+    if not portal_session or not portal_session.store_id:
+        return None
+    return Store.query.get(portal_session.store_id)
+
+
+def _resolve_store(slug: str):
+    """Resolve a loja pelo slug da URL configurada no Hotspot Manager do UDM Pro.
+
+    Cai para a loja 'default' se o slug nao existir/estiver inativo, para nao
+    quebrar acessos com URL desatualizada.
+    """
+    store = Store.query.filter_by(slug=slug, is_active=True).first()
+    if store:
+        return store
+    if slug != "default":
+        return Store.query.filter_by(slug="default", is_active=True).first()
+    return None
+
+
+@bp.get("/guest/s/<slug>/")
 @bp.get("/guest/")
 @csrf.exempt
-def entry():
+def entry(slug="default"):
     client_mac   = request.args.get("id") or request.args.get("mac")
     ap_mac       = request.args.get("ap")
     ssid         = request.args.get("ssid", "WiFi")
     redirect_url = request.args.get("url", "http://google.com")
+    store        = _resolve_store(slug)
 
     if client_mac:
-        portal_session = create_pending_session(client_mac, ap_mac, ssid, redirect_url)
+        portal_session = create_pending_session(client_mac, ap_mac, ssid, redirect_url, store)
         session[PORTAL_SESSION_KEY] = portal_session.id
     else:
         session[PORTAL_SESSION_KEY] = None
@@ -77,11 +100,14 @@ def identify():
         flash("Sess\u00e3o expirada. Por favor, conecte-se novamente ao WiFi.", "error")
         return redirect(url_for("portal.entry"))
 
-    email  = request.form.get("email",  "").strip().lower()
+    cpf    = request.form.get("cpf",    "").strip()
     mobile = request.form.get("mobile", "").strip()
 
-    if not email or not mobile:
-        flash("Preencha e-mail e celular.", "error")
+    if not cpf or not mobile:
+        flash("Preencha CPF e celular.", "error")
+        return redirect(url_for("portal.entry"))
+    if not validate_cpf(cpf):
+        flash("CPF inv\u00e1lido.", "error")
         return redirect(url_for("portal.entry"))
     if not validate_phone(mobile):
         flash("N\u00famero de celular inv\u00e1lido.", "error")
@@ -90,13 +116,26 @@ def identify():
         flash("Voc\u00ea precisa aceitar os Termos de Uso para continuar.", "error")
         return redirect(url_for("portal.entry"))
 
-    visitor = Visitor.find_by_email_or_mobile(email, mobile)
+    cpf_norm    = normalize_cpf(cpf)
+    mobile_norm = normalize_phone(mobile)
+    visitor = Visitor.find_by_cpf(cpf_norm)
     if visitor:
         if visitor.is_blocked:
             flash("Seu acesso foi restrito. Entre em contato com o suporte.", "error")
             return redirect(url_for("portal.entry"))
 
-        ok = authorize_visitor(portal_session, visitor)
+        # CPF é a chave de identificação; o telefone é atualizado quando muda,
+        # exceto se já pertencer a outro cadastro.
+        if visitor.mobile != mobile_norm:
+            taken = Visitor.query.filter(
+                Visitor.mobile == mobile_norm, Visitor.id != visitor.id
+            ).first()
+            if not taken:
+                visitor.mobile = mobile_norm
+                db.session.commit()
+
+        store = _get_session_store(portal_session)
+        ok = authorize_visitor(portal_session, visitor, store)
         if ok:
             return render_template(
                 "portal/success.html",
@@ -107,22 +146,22 @@ def identify():
         flash("N\u00e3o foi poss\u00edvel autorizar o acesso agora. Tente novamente.", "error")
         return redirect(url_for("portal.entry"))
 
-    session["reg_email"]  = email
-    session["reg_mobile"] = normalize_phone(mobile)
+    session["reg_cpf"]    = cpf_norm
+    session["reg_mobile"] = mobile_norm
     return redirect(url_for("portal.register"))
 
 
 @bp.get("/guest/cadastro")
 @csrf.exempt
 def register():
-    if not session.get("reg_email"):
+    if not session.get("reg_cpf"):
         return redirect(url_for("portal.entry"))
     portal_session = _get_portal_session()
     if not portal_session:
         return redirect(url_for("portal.entry"))
     return render_template(
         "portal/register.html",
-        email=session.get("reg_email"),
+        cpf=session.get("reg_cpf"),
         mobile=session.get("reg_mobile"),
         privacy_url=current_app.config.get("PRIVACY_POLICY_URL", "#"),
         terms_version=current_app.config.get("TERMS_VERSION", "1.0"),
@@ -139,26 +178,26 @@ def register_submit():
         flash("Sess\u00e3o expirada. Por favor, conecte-se novamente.", "error")
         return redirect(url_for("portal.entry"))
 
-    email          = session.get("reg_email",  "").strip().lower()
+    cpf            = session.get("reg_cpf",    "").strip()
     mobile         = session.get("reg_mobile", "").strip()
-    full_name      = request.form.get("full_name",     "").strip()
-    cpf            = request.form.get("cpf",           "").strip()
+    full_name      = request.form.get("full_name", "").strip()
+    email          = request.form.get("email",     "").strip().lower()
     marketing_optin= bool(request.form.get("marketing_optin"))
     terms_version  = current_app.config.get("TERMS_VERSION", "1.0")
 
     if not full_name or len(full_name.split()) < 2:
         flash("Informe seu nome completo (m\u00ednimo 2 palavras).", "error")
         return redirect(url_for("portal.register"))
-    if not validate_cpf(cpf):
-        flash("CPF inv\u00e1lido.", "error")
+    if email and not validate_email(email):
+        flash("E-mail inv\u00e1lido.", "error")
         return redirect(url_for("portal.register"))
 
     visitor = Visitor.query.filter_by(cpf=cpf).first()
     created = False
     if visitor is None:
         visitor = Visitor.create(
-            full_name=full_name, email=email, mobile=mobile,
-            cpf=cpf, terms_version=terms_version, marketing_optin=marketing_optin,
+            full_name=full_name, mobile=mobile, cpf=cpf,
+            email=email or None, terms_version=terms_version, marketing_optin=marketing_optin,
         )
         db.session.add(visitor)
         try:
@@ -176,8 +215,9 @@ def register_submit():
 
     db.session.commit()
 
-    ok = authorize_visitor(portal_session, visitor)
-    session.pop("reg_email", None)
+    store = _get_session_store(portal_session)
+    ok = authorize_visitor(portal_session, visitor, store)
+    session.pop("reg_cpf", None)
     session.pop("reg_mobile", None)
 
     if ok:

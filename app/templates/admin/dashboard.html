@@ -42,6 +42,7 @@
       <thead>
         <tr class="text-xs text-slate-500 border-b border-white/5">
           <th class="text-left px-4 py-3 font-medium">Visitante</th>
+          <th class="text-left px-4 py-3 font-medium hidden lg:table-cell">Loja</th>
           <th class="text-left px-4 py-3 font-medium">SSID</th>
           <th class="text-left px-4 py-3 font-medium hidden lg:table-cell">Dispositivo</th>
           <th class="text-left px-4 py-3 font-medium hidden lg:table-cell">IP</th>
@@ -56,10 +57,17 @@
           <td class="px-4 py-3">
             {% if s.visitor %}
             <div>
-              <p class="font-medium text-slate-200 text-xs">{{ s.visitor.full_name }}</p>
-              <p class="text-xs text-slate-500 truncate max-w-[160px]">{{ s.visitor.email }}</p>
+              <a href="{{ url_for('admin.visitor_detail', vid=s.visitor.id) }}"
+                 class="font-medium text-slate-200 text-xs hover:text-teal-300 transition"
+                 title="Ver extrato de conexões">{{ s.visitor.full_name }}</a>
+              <p class="text-xs text-slate-500 truncate max-w-[160px]">
+                {{ s.visitor.email or s.visitor.mobile | telefone }}
+              </p>
             </div>
             {% else %}<span class="text-slate-600 text-xs">—</span>{% endif %}
+          </td>
+          <td class="px-4 py-3 hidden lg:table-cell">
+            <span class="text-xs text-slate-400">{{ s.store.name if s.store else '—' }}</span>
           </td>
           <td class="px-4 py-3"><span class="text-xs text-slate-400">{{ s.ssid or '—' }}</span></td>
           <td class="px-4 py-3 hidden lg:table-cell">
@@ -81,16 +89,30 @@
             {% endif %}
           </td>
           <td class="px-4 py-3 text-xs text-slate-500 tabular-nums whitespace-nowrap">
-            {{ s.created_at | localtime('%d/%m %H:%M') }}
+            {{ s.created_at | datahora_curta }}
           </td>
           <td class="px-4 py-3">
-            {% if not s.authorized %}
-            <form method="post"
-                  action="{{ url_for('admin.session_delete', sid=s.id) }}"
-                  onsubmit="return confirm('Remover esta sessão pendente?')">
+            {# conexao ativa: derruba no controlador.
+               acesso que nunca foi autorizado: pode ser apagado do banco.
+               sessao ja encerrada: fica como registro, nao se apaga. #}
+            {% if s.authorized %}
+            <form method="post" action="{{ url_for('admin.session_revoke', sid=s.id) }}"
+                  class="inline"
+                  onsubmit="return confirm('Derrubar a conexão de {{ s.client_mac }}? O dispositivo perde o acesso e precisará se identificar novamente.')">
               <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
               <button type="submit"
-                      title="Apagar sessão pendente"
+                      class="text-xs px-2.5 py-1 rounded-lg border border-red-500/20 text-red-400
+                             hover:bg-red-500/10 transition whitespace-nowrap">
+                Derrubar
+              </button>
+            </form>
+            {% elif not s.authorized_at %}
+            <form method="post"
+                  action="{{ url_for('admin.session_delete', sid=s.id) }}"
+                  onsubmit="return confirm('Remover este acesso pendente?')">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <button type="submit"
+                      title="Apagar acesso pendente"
                       class="inline-flex items-center justify-center h-7 w-7 rounded-lg bg-red-500/10 hover:bg-red-500/25 text-red-400 transition">
                 <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round"
@@ -104,7 +126,7 @@
           </td>
         </tr>
         {% else %}
-        <tr><td colspan="7" class="px-4 py-10 text-center text-sm text-slate-600">Nenhuma sessão registrada ainda.</td></tr>
+        <tr><td colspan="8" class="px-4 py-10 text-center text-sm text-slate-600">Nenhuma sessão registrada ainda.</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -116,27 +138,42 @@
     <div class="px-4 py-3 flex items-start justify-between gap-3">
       <div class="min-w-0 flex-1">
         {% if s.visitor %}
-          <p class="text-sm font-medium text-slate-200 truncate">{{ s.visitor.full_name }}</p>
-          <p class="text-xs text-slate-500 truncate">{{ s.visitor.email }}</p>
+          <a href="{{ url_for('admin.visitor_detail', vid=s.visitor.id) }}"
+             class="block text-sm font-medium text-slate-200 truncate hover:text-teal-300 transition">
+            {{ s.visitor.full_name }}
+          </a>
+          <p class="text-xs text-slate-500 truncate">
+            {{ s.visitor.email or s.visitor.mobile | telefone }}
+          </p>
         {% else %}
           <p class="text-xs text-slate-600">Visitante anônimo</p>
         {% endif %}
         <p class="text-xs text-slate-600 mt-0.5 tabular-nums">
-          {{ s.created_at | localtime('%d/%m %H:%M') }}
+          {{ s.created_at | datahora_curta }}
+          {% if s.store %}<span class="text-slate-700"> · {{ s.store.name }}</span>{% endif %}
           {% if s.ssid %}<span class="text-slate-700"> · {{ s.ssid }}</span>{% endif %}
         </p>
       </div>
       <div class="shrink-0 pt-0.5 flex flex-col items-end gap-2">
         {% if s.authorized %}
         <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-emerald-500/15 text-emerald-400">✓ Auth</span>
-        {% else %}
+        <form method="post" action="{{ url_for('admin.session_revoke', sid=s.id) }}"
+              onsubmit="return confirm('Derrubar a conexão de {{ s.client_mac }}?')">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit"
+                  class="text-xs px-2.5 py-1 rounded-lg border border-red-500/20 text-red-400
+                         hover:bg-red-500/10 transition whitespace-nowrap">
+            Derrubar
+          </button>
+        </form>
+        {% elif not s.authorized_at %}
         <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-slate-500/15 text-slate-500">Pend.</span>
         <form method="post"
               action="{{ url_for('admin.session_delete', sid=s.id) }}"
-              onsubmit="return confirm('Remover esta sessão pendente?')">
+              onsubmit="return confirm('Remover este acesso pendente?')">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit"
-                  title="Apagar sessão pendente"
+                  title="Apagar acesso pendente"
                   class="inline-flex items-center justify-center h-7 w-7 rounded-lg bg-red-500/10 hover:bg-red-500/25 text-red-400 transition">
             <svg class="h-3.5 w-3.5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round"
@@ -144,6 +181,8 @@
             </svg>
           </button>
         </form>
+        {% else %}
+        <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium bg-slate-500/15 text-slate-500">Encerrada</span>
         {% endif %}
       </div>
     </div>

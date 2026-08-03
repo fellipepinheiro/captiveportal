@@ -20,7 +20,7 @@
 
 <!-- Busca -->
 <form method="get" class="mb-4 flex gap-2">
-  <input type="text" name="q" value="{{ q }}" placeholder="Buscar por nome ou e-mail…"
+  <input type="text" name="q" value="{{ q }}" placeholder="Buscar por nome, CPF, celular ou e-mail…"
     class="flex-1 rounded-lg bg-white/10 border border-white/20 text-white px-3 py-2 text-sm
            placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-teal-400 min-w-0">
   <button class="px-4 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-lg text-sm shrink-0">Buscar</button>
@@ -36,8 +36,9 @@
     <thead class="bg-white/10 text-white/60 uppercase text-xs">
       <tr>
         <th class="px-4 py-3 text-left">Nome</th>
-        <th class="px-4 py-3 text-left">E-mail</th>
+        <th class="px-4 py-3 text-left">CPF</th>
         <th class="px-4 py-3 text-left">Celular</th>
+        <th class="px-4 py-3 text-left">E-mail</th>
         <th class="px-4 py-3 text-center">Visitas</th>
         <th class="px-4 py-3 text-left">Último acesso</th>
         <th class="px-4 py-3 text-center">Status</th>
@@ -48,16 +49,18 @@
       {% for v in pagination.items %}
       <tr class="hover:bg-white/5 transition-colors {% if v.is_blocked %}opacity-60{% endif %}">
         <td class="px-4 py-3 font-medium text-white">
-          {{ v.full_name }}
+          <a href="{{ url_for('admin.visitor_detail', vid=v.id) }}"
+             class="hover:text-teal-300 transition" title="Ver extrato de conexões">{{ v.full_name }}</a>
           {% if v.is_blocked %}
             <span class="ml-1 text-xs bg-red-700/60 text-red-200 px-1.5 py-0.5 rounded">bloqueado</span>
           {% endif %}
         </td>
-        <td class="px-4 py-3">{{ v.email }}</td>
-        <td class="px-4 py-3">{{ v.mobile }}</td>
+        <td class="px-4 py-3 tabular-nums">{{ v.cpf | cpf }}</td>
+        <td class="px-4 py-3 tabular-nums">{{ v.mobile | telefone }}</td>
+        <td class="px-4 py-3">{{ v.email or '—' }}</td>
         <td class="px-4 py-3 text-center tabular-nums">{{ v.visit_count or 0 }}</td>
         <td class="px-4 py-3 text-white/50 text-xs">
-          {% if v.last_seen %}{{ v.last_seen.strftime('%d/%m/%Y %H:%M') }}{% else %}—{% endif %}
+          {{ v.last_seen | datahora }}
         </td>
         <td class="px-4 py-3 text-center">
           {% if v.is_blocked %}
@@ -67,20 +70,26 @@
           {% endif %}
         </td>
         <td class="px-4 py-3 text-center">
-          {% if v.is_blocked %}
-            <form method="post" action="{{ url_for('admin.visitor_unblock', vid=v.id) }}" class="inline">
-              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-              <button class="text-xs bg-emerald-700 hover:bg-emerald-600 text-white px-2 py-1 rounded"
-                      onclick="return confirm('Desbloquear {{ v.full_name | e }}?')">Desbloquear</button>
-            </form>
-          {% else %}
-            <button onclick="openBlockModal({{ v.id }}, '{{ v.full_name | e }}')"
-                    class="text-xs bg-red-700 hover:bg-red-600 text-white px-2 py-1 rounded">Bloquear</button>
-          {% endif %}
+          <div class="flex items-center justify-center gap-1.5 flex-wrap">
+            {% if v.is_blocked %}
+              <form method="post" action="{{ url_for('admin.visitor_unblock', vid=v.id) }}" class="inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <button class="text-xs bg-emerald-700 hover:bg-emerald-600 text-white px-2 py-1 rounded"
+                        onclick="return confirm('Desbloquear {{ v.full_name | e }}?')">Desbloquear</button>
+              </form>
+            {% else %}
+              <button onclick="openBlockModal({{ v.id }}, '{{ v.full_name | e }}')"
+                      class="text-xs bg-red-700 hover:bg-red-600 text-white px-2 py-1 rounded">Bloquear</button>
+            {% endif %}
+            <button onclick="openDeleteModal({{ v.id }}, '{{ v.full_name | e }}')"
+              class="text-xs border border-red-500/30 text-red-300 hover:bg-red-500/10 px-2 py-1 rounded">
+              Excluir
+            </button>
+          </div>
         </td>
       </tr>
       {% else %}
-      <tr><td colspan="7" class="px-4 py-10 text-center text-white/40">Nenhum visitante encontrado.</td></tr>
+      <tr><td colspan="8" class="px-4 py-10 text-center text-white/40">Nenhum visitante encontrado.</td></tr>
       {% endfor %}
     </tbody>
   </table>
@@ -92,8 +101,11 @@
   <div class="bg-white/5 border border-white/10 rounded-xl p-4 {% if v.is_blocked %}opacity-60{% endif %}">
     <div class="flex items-start justify-between gap-2 mb-2">
       <div class="min-w-0">
-        <p class="font-semibold text-white text-sm truncate">{{ v.full_name }}</p>
-        <p class="text-xs text-slate-400 truncate">{{ v.email }}</p>
+        <a href="{{ url_for('admin.visitor_detail', vid=v.id) }}"
+           class="block font-semibold text-white text-sm truncate hover:text-teal-300 transition">
+          {{ v.full_name }}
+        </a>
+        <p class="text-xs text-slate-400 truncate">{{ v.cpf | cpf }}</p>
       </div>
       {% if v.is_blocked %}
         <span class="shrink-0 text-xs bg-red-900/50 text-red-300 px-2 py-1 rounded-full">🚫 Bloqueado</span>
@@ -105,7 +117,7 @@
     <div class="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-400 mb-3">
       <div>
         <span class="text-slate-600 uppercase tracking-wide text-[10px]">Celular</span>
-        <p class="text-slate-300">{{ v.mobile }}</p>
+        <p class="text-slate-300">{{ v.mobile | telefone }}</p>
       </div>
       <div>
         <span class="text-slate-600 uppercase tracking-wide text-[10px]">Visitas</span>
@@ -114,7 +126,7 @@
       <div class="col-span-2">
         <span class="text-slate-600 uppercase tracking-wide text-[10px]">Último acesso</span>
         <p class="text-slate-300">
-          {% if v.last_seen %}{{ v.last_seen.strftime('%d/%m/%Y %H:%M') }}{% else %}—{% endif %}
+          {{ v.last_seen | datahora }}
         </p>
       </div>
     </div>
@@ -132,6 +144,10 @@
           Bloquear
         </button>
       {% endif %}
+      <button onclick="openDeleteModal({{ v.id }}, '{{ v.full_name | e }}')"
+              class="flex-1 text-xs border border-red-500/30 text-red-300 hover:bg-red-500/10 px-3 py-2 rounded-lg transition">
+        Excluir
+      </button>
     </div>
   </div>
   {% else %}
@@ -177,7 +193,45 @@
   </div>
 </div>
 
+<!-- Modal excluir -->
+<div id="deleteModal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/60">
+  <div class="bg-slate-800 border border-white/20 rounded-xl p-6 w-full max-w-md mx-4">
+    <h2 class="text-lg font-semibold text-white mb-1">Excluir cadastro</h2>
+    <p id="deleteModalName" class="text-white/60 text-sm mb-4"></p>
+    <div class="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-2.5 mb-4">
+      <p class="text-xs text-amber-200/90 leading-relaxed">
+        Apaga nome, CPF, celular, e-mail e o histórico de consentimento — sem volta.
+        Os registros de acesso à rede são <strong>mantidos de forma anônima</strong>,
+        como exige o Marco Civil da Internet.
+      </p>
+    </div>
+    <form id="deleteForm" method="post">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div class="flex justify-end gap-2">
+        <button type="button" onclick="closeDeleteModal()"
+          class="px-4 py-2 bg-white/10 hover:bg-white/20 text-white rounded text-sm">Cancelar</button>
+        <button type="submit"
+          class="px-4 py-2 bg-red-700 hover:bg-red-600 text-white rounded text-sm">Excluir definitivamente</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 <script>
+function openDeleteModal(vid, name) {
+  document.getElementById('deleteForm').action = `/admin/visitantes/${vid}/excluir`;
+  document.getElementById('deleteModalName').textContent = name;
+  document.getElementById('deleteModal').classList.remove('hidden');
+  document.getElementById('deleteModal').classList.add('flex');
+}
+function closeDeleteModal() {
+  document.getElementById('deleteModal').classList.add('hidden');
+  document.getElementById('deleteModal').classList.remove('flex');
+}
+document.getElementById('deleteModal').addEventListener('click', function(e) {
+  if (e.target === this) closeDeleteModal();
+});
+
 function openBlockModal(vid, name) {
   document.getElementById('blockForm').action = `/admin/visitantes/${vid}/bloquear`;
   document.getElementById('blockModalName').textContent = name;

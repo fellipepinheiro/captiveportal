@@ -16,6 +16,7 @@ class PortalSession(db.Model):
     ssid        = db.Column(db.String(64))
     redirect_url= db.Column(db.String(512))
     visitor_id  = db.Column(db.Integer, db.ForeignKey("visitors.id"), nullable=True, index=True)
+    store_id    = db.Column(db.Integer, db.ForeignKey("stores.id"), nullable=True, index=True)
 
     # Rede / dispositivo
     client_ip   = db.Column(db.String(45))          # suporta IPv6
@@ -36,11 +37,75 @@ class PortalSession(db.Model):
                             onupdate=lambda: datetime.now(timezone.utc))
 
     visitor     = db.relationship("Visitor", backref="sessions", lazy="select")
+    store       = db.relationship("Store", backref="sessions", lazy="select")
 
     # ── helpers ────────────────────────────────────────────────────────────
     @property
     def is_active(self):
         return self.authorized and self.expired_at is None
+
+    @property
+    def started_at(self):
+        """Inicio efetivo do acesso: quando foi autorizado.
+
+        Cai para created_at nas sessoes que nunca chegaram a ser
+        autorizadas (o visitante abriu o portal e desistiu).
+        """
+        return self.authorized_at or self.created_at
+
+    @property
+    def duration(self):
+        """Minutos de conexao, calculados dos timestamps.
+
+        Nao usa duration_minutes como fonte: sessoes encerradas antes de o
+        calculo existir ficaram com o campo zerado, ainda que authorized_at
+        e expired_at registrem corretamente o intervalo. Os timestamps sao
+        a fonte confiavel; o campo serve de fallback.
+
+        Retorna None enquanto a sessao nao terminou.
+        """
+        inicio, fim = self.started_at, self.expired_at
+        if not (inicio and fim):
+            return None
+
+        if inicio.tzinfo is None:
+            inicio = inicio.replace(tzinfo=timezone.utc)
+        if fim.tzinfo is None:
+            fim = fim.replace(tzinfo=timezone.utc)
+
+        minutos = max(0, int((fim - inicio).total_seconds() // 60))
+        # Mesmo teto aplicado no encerramento: ninguem fica conectado alem
+        # do tempo de autorizacao concedido pela loja.
+        limite = self.store.session_minutes if self.store else None
+        if limite:
+            minutos = min(minutos, limite)
+        return minutos
+
+    def close(self, when: datetime = None, max_minutes: int = None):
+        """Encerra a sessao e calcula quanto tempo durou.
+
+        Centralizado aqui porque o encerramento acontece em dois caminhos —
+        o botao "derrubar" do painel e a sincronizacao periodica — e a
+        duracao precisa ser gravada igual nos dois.
+
+        `max_minutes` limita a duracao ao tempo de autorizacao concedido.
+        A saida do visitante so e percebida na verificacao seguinte, entao
+        se a sincronizacao ficar parada (manutencao, controlador fora do ar)
+        a diferenca bruta viraria dias — mas a autorizacao do UniFi expira
+        sozinha em `max_minutes`, logo ninguem ficou conectado alem disso.
+        """
+        when = when or datetime.now(timezone.utc)
+        self.authorized = False
+        self.expired_at = when
+
+        inicio = self.started_at
+        if inicio:
+            if inicio.tzinfo is None:
+                inicio = inicio.replace(tzinfo=timezone.utc)
+            minutos = max(0, int((when - inicio).total_seconds() // 60))
+            if max_minutes:
+                minutos = min(minutos, max_minutes)
+            self.duration_minutes = minutos
 
     @classmethod
     def detect_device(cls, ua: str) -> tuple[str, str]:

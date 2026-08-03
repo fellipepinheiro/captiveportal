@@ -11,19 +11,64 @@ DEV_MODE = os.getenv('FLASK_ENV') == 'development'
 DEFAULT_TIMEOUT = int(os.getenv('UNIFI_TIMEOUT', '20'))
 
 
+def _mock_override():
+    """UNIFI_MOCK sobrepoe a deteccao automatica de modo mock.
+
+    Sem essa variavel, rodar em FLASK_ENV=development forcaria mock e
+    impediria testar contra um controlador real. Retorna None quando a
+    variavel nao esta definida (mantem o comportamento automatico).
+    """
+    raw = os.getenv('UNIFI_MOCK')
+    if raw is None or raw.strip() == '':
+        return None
+    return raw.strip().lower() in ('1', 'true', 'yes', 'on')
+
+
 class UnifiAPIError(Exception):
-    """Excecao base para erros da API UniFi."""
-    pass
+    """Erro da API UniFi.
+
+    `code` traz o identificador que a API devolve no corpo do erro
+    (ex: 'api.client.no-active-guest-authorization'), permitindo tratar
+    casos especificos sem depender do texto da mensagem.
+    """
+
+    def __init__(self, message: str, status_code: int = None, code: str = None):
+        super().__init__(message)
+        self.status_code = status_code
+        self.code = code
 
 
-def _build_session(api_key: str) -> requests.Session:
+def _api_error(exc: Exception, resp=None) -> UnifiAPIError:
+    """Monta um UnifiAPIError extraindo codigo e mensagem do corpo da resposta.
+
+    O texto padrao do requests ('422 Client Error: for url ...') nao diz o
+    que houve; a API detalha o motivo no corpo em JSON.
+    """
+    status = getattr(resp, 'status_code', None)
+    code = None
+    detalhe = str(exc)
+    if resp is not None:
+        try:
+            body = resp.json()
+            code = body.get('code')
+            if body.get('message'):
+                detalhe = f"{body['message']} (HTTP {status})"
+        except Exception:
+            pass
+    return UnifiAPIError(detalhe, status_code=status, code=code)
+
+
+def _build_session(api_key: str, verify_ssl: bool) -> requests.Session:
     """Cria sessao com retry automatico (3x para erros 5xx/502/503)."""
     session = requests.Session()
     session.headers.update({
-        'Authorization': f'Bearer {api_key}',
+        # A UniFi Network Integration API autentica por X-API-KEY.
+        # 'Authorization: Bearer' e recusado com 401.
+        'X-API-KEY': api_key,
         'Content-Type': 'application/json',
         'Accept': 'application/json',
     })
+    session.verify = verify_ssl
     retry = Retry(
         total=3,
         backoff_factor=0.5,
@@ -36,11 +81,23 @@ def _build_session(api_key: str) -> requests.Session:
     return session
 
 
-def get_unifi() -> 'UnifiAPI':
-    """Factory que cria um UnifiAPI a partir das configs da app Flask atual."""
+def get_unifi_for_store(store=None) -> 'UnifiAPI':
+    """Factory que cria um UnifiAPI a partir das credenciais de uma Store.
+
+    Se `store` for None (loja não identificada), cai para as configs
+    globais da app (compatibilidade com instalacoes de loja unica).
+    """
+    if store is not None:
+        return UnifiAPI(
+            base_url=store.unifi_base_url or '',
+            api_key=store.unifi_api_key or '',
+            verify_ssl=bool(store.unifi_verify_ssl),
+            timeout=int(current_app.config.get('UNIFI_TIMEOUT', DEFAULT_TIMEOUT)),
+        )
     return UnifiAPI(
         base_url=current_app.config.get('UNIFI_BASE_URL', ''),
         api_key=current_app.config.get('UNIFI_API_KEY', ''),
+        verify_ssl=bool(current_app.config.get('UNIFI_VERIFY_SSL', False)),
         timeout=int(current_app.config.get('UNIFI_TIMEOUT', DEFAULT_TIMEOUT)),
     )
 
@@ -52,14 +109,20 @@ class UnifiAPI:
     retornam dados mockados para facilitar o desenvolvimento local.
     """
 
-    def __init__(self, base_url: str, api_key: str, timeout: int = DEFAULT_TIMEOUT):
+    def __init__(self, base_url: str, api_key: str, timeout: int = DEFAULT_TIMEOUT, verify_ssl: bool = True):
         self.base_url = (base_url or '').rstrip('/')
         self.timeout = timeout
         _placeholder = 'https://seu-unifi.exemplo.com'
-        self.mock = DEV_MODE or not self.base_url or self.base_url == _placeholder
+
+        override = _mock_override()
+        if override is None:
+            self.mock = DEV_MODE or not self.base_url or self.base_url == _placeholder
+        else:
+            # Sem base_url nao ha o que chamar — mock continua obrigatorio.
+            self.mock = override or not self.base_url or self.base_url == _placeholder
 
         if not self.mock:
-            self.session = _build_session(api_key)
+            self.session = _build_session(api_key, verify_ssl)
         else:
             logger.info('[UniFi] Modo MOCK ativo — nenhuma chamada real sera feita.')
 
@@ -69,24 +132,71 @@ class UnifiAPI:
     def get_sites(self) -> list:
         if self.mock:
             return [{'id': 'mock-site-id', 'name': 'Mock Site'}]
+        resp = None
         try:
             resp = self.session.get(f'{self.base_url}/v1/sites', timeout=self.timeout)
             resp.raise_for_status()
-            return resp.json()
+            data = resp.json()
         except Exception as exc:
-            logger.error('[UniFi] get_sites falhou: %s', exc)
-            raise UnifiAPIError(str(exc)) from exc
+            err = _api_error(exc, resp)
+            logger.error('[UniFi] get_sites falhou: %s', err)
+            raise err from exc
+
+        # A API v1 responde paginado: {"offset":..,"count":..,"data":[...]}
+        if isinstance(data, list):
+            return data
+        return data.get('data') or data.get('items') or []
 
     # ------------------------------------------------------------------
     # Clientes
     # ------------------------------------------------------------------
+    def list_clients(self, site_id: str, limit: int = 200) -> list:
+        """Lista os clientes conectados ao site.
+
+        Estar nesta lista significa estar conectado ao wifi; o campo
+        `access.authorized` diz se o guest tem acesso liberado.
+        Pagina ate esgotar, para nao perder clientes em sites grandes.
+        """
+        if self.mock:
+            return []
+
+        itens, offset = [], 0
+        while True:
+            resp = None
+            try:
+                resp = self.session.get(
+                    f'{self.base_url}/v1/sites/{site_id}/clients',
+                    params={'limit': limit, 'offset': offset},
+                    timeout=self.timeout,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+            except Exception as exc:
+                err = _api_error(exc, resp)
+                logger.error('[UniFi] list_clients falhou (site=%s): %s', site_id, err)
+                raise err from exc
+
+            if isinstance(data, list):
+                return data
+            pagina = data.get('data') or data.get('items') or []
+            itens.extend(pagina)
+
+            total = data.get('totalCount')
+            offset += len(pagina)
+            if not pagina or total is None or offset >= total:
+                break
+        return itens
+
     def find_client_by_mac(self, site_id: str, mac_address: str) -> dict | None:
         """Retorna o dict do cliente ou None se nao encontrado."""
         if self.mock:
             logger.debug('[MOCK UniFi] find_client_by_mac site=%s mac=%s', site_id, mac_address)
-            return {'id': f'mock-client-{mac_address}', 'macAddress': (mac_address or '').upper()}
+            return {'id': f'mock-client-{mac_address}', 'macAddress': (mac_address or '').lower()}
 
-        mac = (mac_address or '').upper()
+        # O filtro da API e case-sensitive e os MACs sao guardados em
+        # minusculas — enviar em maiusculas devolve lista vazia.
+        mac = (mac_address or '').lower()
+        resp = None
         try:
             resp = self.session.get(
                 f'{self.base_url}/v1/sites/{site_id}/clients',
@@ -96,8 +206,9 @@ class UnifiAPI:
             resp.raise_for_status()
             data = resp.json()
         except Exception as exc:
-            logger.error('[UniFi] find_client_by_mac falhou (mac=%s): %s', mac, exc)
-            raise UnifiAPIError(str(exc)) from exc
+            err = _api_error(exc, resp)
+            logger.error('[UniFi] find_client_by_mac falhou (mac=%s): %s', mac, err)
+            raise err from exc
 
         if isinstance(data, list):
             return data[0] if data else None
@@ -132,6 +243,7 @@ class UnifiAPI:
         if download_limit_kbps > 0:
             payload['downloadLimitKbps'] = download_limit_kbps
 
+        resp = None
         try:
             resp = self.session.post(
                 f'{self.base_url}/v1/sites/{site_id}/clients/{client_id}/actions',
@@ -142,8 +254,9 @@ class UnifiAPI:
             logger.info('[UniFi] Guest autorizado: site=%s client=%s minutes=%s', site_id, client_id, minutes)
             return resp.json() if resp.content else {'ok': True}
         except Exception as exc:
-            logger.error('[UniFi] authorize_guest falhou (client=%s): %s', client_id, exc)
-            raise UnifiAPIError(str(exc)) from exc
+            err = _api_error(exc, resp)
+            logger.error('[UniFi] authorize_guest falhou (client=%s): %s', client_id, err)
+            raise err from exc
 
     # ------------------------------------------------------------------
     # Revogacao (opcional)
@@ -154,6 +267,7 @@ class UnifiAPI:
             logger.debug('[MOCK UniFi] revoke_guest client=%s', client_id)
             return {'ok': True, 'mock': True}
 
+        resp = None
         try:
             resp = self.session.post(
                 f'{self.base_url}/v1/sites/{site_id}/clients/{client_id}/actions',
@@ -164,5 +278,6 @@ class UnifiAPI:
             logger.info('[UniFi] Guest revogado: site=%s client=%s', site_id, client_id)
             return resp.json() if resp.content else {'ok': True}
         except Exception as exc:
-            logger.error('[UniFi] revoke_guest falhou (client=%s): %s', client_id, exc)
-            raise UnifiAPIError(str(exc)) from exc
+            err = _api_error(exc, resp)
+            logger.error('[UniFi] revoke_guest falhou (client=%s): %s', client_id, err)
+            raise err from exc

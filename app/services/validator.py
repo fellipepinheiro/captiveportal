@@ -26,3 +26,33 @@ def validate_phone(phone: str, region: str = "BR") -> bool:
 
 def normalize_phone(phone: str) -> str:
     return re.sub(r"\D", "", phone)
+
+
+def normalize_cpf(cpf: str) -> str:
+    """Somente dígitos — a coluna visitors.cpf é VARCHAR(11)."""
+    return re.sub(r"\D", "", cpf)
+
+
+def format_cpf(cpf: str) -> str:
+    """39053344705 → 390.533.447-05 (para exibição)."""
+    d = normalize_cpf(cpf or "")
+    if len(d) != 11:
+        return cpf or ""
+    return f"{d[:3]}.{d[3:6]}.{d[6:9]}-{d[9:]}"
+
+
+def format_phone(phone: str) -> str:
+    """47988776655 → (47) 98877-6655 (para exibição)."""
+    d = normalize_phone(phone or "")
+    if len(d) == 11:
+        return f"({d[:2]}) {d[2:7]}-{d[7:]}"
+    if len(d) == 10:
+        return f"({d[:2]}) {d[2:6]}-{d[6:]}"
+    return phone or ""
+
+
+_EMAIL_RE = re.compile(r"^[^\s@]+@[^\s@]+\.[^\s@]+$")
+
+
+def validate_email(email: str) -> bool:
+    return bool(_EMAIL_RE.match(email))
