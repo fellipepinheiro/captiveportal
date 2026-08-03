@@ -33,7 +33,9 @@ def _build_session(api_key: str, verify_ssl: bool) -> requests.Session:
     """Cria sessao com retry automatico (3x para erros 5xx/502/503)."""
     session = requests.Session()
     session.headers.update({
-        'Authorization': f'Bearer {api_key}',
+        # A UniFi Network Integration API autentica por X-API-KEY.
+        # 'Authorization: Bearer' e recusado com 401.
+        'X-API-KEY': api_key,
         'Content-Type': 'application/json',
         'Accept': 'application/json',
     })
@@ -121,9 +123,11 @@ class UnifiAPI:
         """Retorna o dict do cliente ou None se nao encontrado."""
         if self.mock:
             logger.debug('[MOCK UniFi] find_client_by_mac site=%s mac=%s', site_id, mac_address)
-            return {'id': f'mock-client-{mac_address}', 'macAddress': (mac_address or '').upper()}
+            return {'id': f'mock-client-{mac_address}', 'macAddress': (mac_address or '').lower()}
 
-        mac = (mac_address or '').upper()
+        # O filtro da API e case-sensitive e os MACs sao guardados em
+        # minusculas — enviar em maiusculas devolve lista vazia.
+        mac = (mac_address or '').lower()
         try:
             resp = self.session.get(
                 f'{self.base_url}/v1/sites/{site_id}/clients',
