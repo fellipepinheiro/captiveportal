@@ -11,6 +11,19 @@ DEV_MODE = os.getenv('FLASK_ENV') == 'development'
 DEFAULT_TIMEOUT = int(os.getenv('UNIFI_TIMEOUT', '20'))
 
 
+def _mock_override():
+    """UNIFI_MOCK sobrepoe a deteccao automatica de modo mock.
+
+    Sem essa variavel, rodar em FLASK_ENV=development forcaria mock e
+    impediria testar contra um controlador real. Retorna None quando a
+    variavel nao esta definida (mantem o comportamento automatico).
+    """
+    raw = os.getenv('UNIFI_MOCK')
+    if raw is None or raw.strip() == '':
+        return None
+    return raw.strip().lower() in ('1', 'true', 'yes', 'on')
+
+
 class UnifiAPIError(Exception):
     """Excecao base para erros da API UniFi."""
     pass
@@ -69,7 +82,13 @@ class UnifiAPI:
         self.base_url = (base_url or '').rstrip('/')
         self.timeout = timeout
         _placeholder = 'https://seu-unifi.exemplo.com'
-        self.mock = DEV_MODE or not self.base_url or self.base_url == _placeholder
+
+        override = _mock_override()
+        if override is None:
+            self.mock = DEV_MODE or not self.base_url or self.base_url == _placeholder
+        else:
+            # Sem base_url nao ha o que chamar — mock continua obrigatorio.
+            self.mock = override or not self.base_url or self.base_url == _placeholder
 
         if not self.mock:
             self.session = _build_session(api_key, verify_ssl)
@@ -85,10 +104,15 @@ class UnifiAPI:
         try:
             resp = self.session.get(f'{self.base_url}/v1/sites', timeout=self.timeout)
             resp.raise_for_status()
-            return resp.json()
+            data = resp.json()
         except Exception as exc:
             logger.error('[UniFi] get_sites falhou: %s', exc)
             raise UnifiAPIError(str(exc)) from exc
+
+        # A API v1 responde paginado: {"offset":..,"count":..,"data":[...]}
+        if isinstance(data, list):
+            return data
+        return data.get('data') or data.get('items') or []
 
     # ------------------------------------------------------------------
     # Clientes

@@ -114,8 +114,27 @@ document.getElementById('test-btn').addEventListener('click', async () => {
     const data = await r.json();
     if (data.ok) {
       res.classList.add('border-teal-400/30', 'bg-teal-500/10', 'text-teal-100');
-      const names = (data.sites||[]).map(s => s.name || s.id).join(', ');
-      res.textContent = (data.mock ? '✓ Modo mock ativo — ' : '✓ Conexão OK — ') + 'sites: ' + (names || '—');
+      const sites = data.sites || [];
+      res.innerHTML = '';
+      const head = document.createElement('p');
+      head.textContent = data.mock
+        ? '⚠ Modo mock ativo — nenhuma chamada real foi feita ao controlador.'
+        : '✓ Conexão OK — sites encontrados:';
+      res.appendChild(head);
+      if (!data.mock) {
+        sites.forEach(function(s){
+          const line = document.createElement('p');
+          line.className = 'mt-1 text-xs';
+          line.textContent = '• ' + (s.name || '(sem nome)') + ' → Site ID: ' + s.id;
+          res.appendChild(line);
+        });
+        if (!sites.length) {
+          const line = document.createElement('p');
+          line.className = 'mt-1 text-xs';
+          line.textContent = '(nenhum site retornado)';
+          res.appendChild(line);
+        }
+      }
     } else {
       res.classList.add('border-rose-400/30', 'bg-rose-500/10', 'text-rose-200');
       res.textContent = '✗ Erro: ' + (data.error || 'Falha desconhecida');
