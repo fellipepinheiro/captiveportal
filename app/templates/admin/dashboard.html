@@ -92,7 +92,7 @@
             {% endif %}
           </td>
           <td class="px-5 py-3 text-xs text-slate-500">
-            {{ s.created_at.strftime('%d/%m %H:%M') if s.created_at else '—' }}
+            {{ s.created_at | datahora_curta }}
           </td>
         </tr>
         {% else %}

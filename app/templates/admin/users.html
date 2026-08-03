@@ -56,9 +56,9 @@
             </span>
           {% endif %}
         </td>
-        <td class="px-4 py-3 text-slate-500 text-xs">{{ u.created_at.strftime('%d/%m/%Y') }}</td>
+        <td class="px-4 py-3 text-slate-500 text-xs">{{ u.created_at | data }}</td>
         <td class="px-4 py-3 text-slate-500 text-xs">
-          {{ u.last_login.strftime('%d/%m/%Y %H:%M') if u.last_login else 'nunca' }}
+          {{ (u.last_login | datahora) if u.last_login else 'nunca' }}
         </td>
         <td class="px-4 py-3">
           <div class="flex items-center gap-2">

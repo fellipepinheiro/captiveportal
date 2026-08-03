@@ -17,6 +17,7 @@ from app.extensions import db, limiter, csrf
 from app.models import Visitor, PortalSession, AdminUser, Store
 from app.models.site_config import SiteConfig
 from app.services.unifi_api import get_unifi_for_store, UnifiAPIError
+from app.services.datetime_fmt import fmt_datetime
 
 bp = Blueprint("admin", __name__)
 
@@ -185,9 +186,9 @@ def export_visitors():
         w.writerow([
             v.id, v.full_name, v.email or "", v.mobile, v.cpf,
             v.visit_count or 0,
-            v.last_seen.isoformat() if v.last_seen else "",
+            fmt_datetime(v.last_seen) if v.last_seen else "",
             "Sim" if v.is_blocked else "Não",
-            v.created_at,
+            fmt_datetime(v.created_at),
         ])
     buf.seek(0)
     return Response(

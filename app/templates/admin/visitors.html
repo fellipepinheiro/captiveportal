@@ -47,7 +47,7 @@
         <td class="px-4 py-3">{{ v.email or '—' }}</td>
         <td class="px-4 py-3 text-center tabular-nums">{{ v.visit_count or 0 }}</td>
         <td class="px-4 py-3 text-white/50 text-xs">
-          {% if v.last_seen %}{{ v.last_seen.strftime('%d/%m/%Y %H:%M') }}{% else %}—{% endif %}
+          {{ v.last_seen | datahora }}
         </td>
         <td class="px-4 py-3 text-center">
           {% if v.is_blocked %}

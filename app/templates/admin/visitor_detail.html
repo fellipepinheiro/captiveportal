@@ -19,7 +19,7 @@
     </div>
     <div class="flex justify-between text-sm">
       <span class="text-slate-400">Cadastrado em</span>
-      <span class="text-slate-200">{{ visitor.created_at.strftime('%d/%m/%Y %H:%M') }}</span>
+      <span class="text-slate-200">{{ visitor.created_at | datahora }}</span>
     </div>
     <div class="flex justify-between text-sm">
       <span class="text-slate-400">Status</span>
@@ -39,7 +39,7 @@
         <span class="{% if s.authorized %}text-emerald-400{% else %}text-amber-400{% endif %}">
           {{ 'Autorizado' if s.authorized else 'Pendente' }}
         </span>
-        <span>{{ s.created_at.strftime('%d/%m %H:%M') }}</span>
+        <span>{{ s.created_at | datahora_curta }}</span>
       </div>
       {% else %}
       <p class="text-sm text-slate-500">Nenhuma sessão.</p>

@@ -38,6 +38,12 @@ def create_app(config_name=None):
     app.jinja_env.filters['cpf'] = format_cpf
     app.jinja_env.filters['telefone'] = format_phone
 
+    # Datas sao gravadas em UTC — converte para o fuso local ao exibir
+    from app.services.datetime_fmt import fmt_datetime, fmt_short, fmt_date
+    app.jinja_env.filters['datahora'] = fmt_datetime
+    app.jinja_env.filters['datahora_curta'] = fmt_short
+    app.jinja_env.filters['data'] = fmt_date
+
     # Context processor: injeta variaveis do portal em todos os templates
     @app.context_processor
     def inject_portal_vars():
