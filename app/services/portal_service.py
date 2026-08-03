@@ -14,6 +14,9 @@ def create_pending_session(client_mac, ap_mac, ssid, redirect_url, store: Store 
     client_ip = flask_request.remote_addr
     device_type, os_hint = PS.detect_device(ua)
 
+    # "pt-BR,pt;q=0.9,en;q=0.8" -> "pt-BR": so a preferencia principal
+    idioma = flask_request.headers.get("Accept-Language", "").split(",")[0].strip()[:20]
+
     ps = PortalSession(
         client_mac   = client_mac,
         ap_mac       = ap_mac,
@@ -23,6 +26,7 @@ def create_pending_session(client_mac, ap_mac, ssid, redirect_url, store: Store 
         user_agent   = ua,
         device_type  = device_type,
         os_hint      = os_hint,
+        language     = idioma or None,
         authorized   = False,
         store_id     = store.id if store else None,
     )
@@ -124,6 +128,48 @@ def revoke_session(portal_session: PortalSession, store: Store = None) -> tuple[
     except Exception:
         db.session.rollback()
         return False, 'Dispositivo desconectado, mas falhou ao atualizar a sessao.'
+
+
+#: Motivos pelos quais um acesso nao se concretiza. Ficam no audit_logs
+#: para alimentar a taxa de sucesso/erro e para investigar reclamacao de
+#: visitante que "nao conseguiu conectar" — sem isso a tentativa some.
+MOTIVOS = {
+    'CPF_INVALIDO':      'CPF inválido',
+    'TELEFONE_INVALIDO': 'Telefone inválido',
+    'CAMPOS_VAZIOS':     'Campos obrigatórios em branco',
+    'TERMOS_RECUSADOS':  'Não aceitou os termos',
+    'VISITANTE_BLOQUEADO': 'Visitante bloqueado',
+    'SESSAO_EXPIRADA':   'Sessão do portal expirada',
+    'UNIFI_FALHOU':      'Falha ao autorizar no controlador',
+    'NOME_INVALIDO':     'Nome incompleto',
+    'EMAIL_INVALIDO':    'E-mail inválido',
+    'ERRO_CADASTRO':     'Erro ao gravar o cadastro',
+}
+
+
+def log_acesso(evento: str, motivo: str = None, portal_session=None,
+               visitor=None, detalhe: str = None):
+    """Registra o desfecho de uma tentativa de acesso ao portal.
+
+    Nunca propaga excecao: auditoria que derruba o fluxo do visitante seria
+    pior que a ausencia do registro.
+    """
+    try:
+        from app.models import AuditLog
+        db.session.add(AuditLog(
+            event_type=evento,
+            status='SUCCESS' if evento == 'ACESSO_LIBERADO' else 'FAILURE',
+            payload=MOTIVOS.get(motivo, motivo) if motivo else None,
+            error_message=detalhe,
+            visitor_id=visitor.id if visitor else None,
+            session_id=portal_session.id if portal_session else None,
+            ip_address=flask_request.remote_addr,
+            actor='portal',
+        ))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        logger.warning('[audit] falha ao registrar %s/%s', evento, motivo, exc_info=True)
 
 
 def record_consent(visitor: Visitor, marketing_optin: bool = False, version: str = "1.0"):

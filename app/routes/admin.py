@@ -989,6 +989,52 @@ def store_disconnect(sid: int):
     return jsonify({"ok": True, "mensagem": msg, "sessoes_encerradas": encerradas})
 
 
+# ─── Auditoria (LGPD) ─────────────────────────────────────────────────────────
+
+@bp.get("/auditoria")
+@login_required
+def audit():
+    """Histórico de eventos para compliance e investigação.
+
+    Junta o audit_logs (tentativas de acesso e ações do painel) com o
+    consent_events (histórico de consentimento), que ate agora eram
+    gravados mas nao tinham como ser consultados.
+    """
+    from app.models import ConsentEvent
+
+    de, ate, inicio, fim = _periodo_do_request()
+    tipo = request.args.get("tipo", "").strip()
+    page = request.args.get("page", 1, type=int)
+
+    q = (AuditLog.query
+         .filter(AuditLog.created_at >= inicio, AuditLog.created_at < fim))
+    if tipo:
+        q = q.filter(AuditLog.event_type == tipo)
+    eventos = q.order_by(AuditLog.created_at.desc()).paginate(page=page, per_page=50)
+
+    # Os tipos vem do proprio historico: a lista cresce sozinha conforme
+    # novos eventos passam a ser registrados.
+    tipos = [t[0] for t in db.session.query(AuditLog.event_type)
+             .distinct().order_by(AuditLog.event_type).all()]
+
+    consentimentos = (ConsentEvent.query
+                      .filter(ConsentEvent.created_at >= inicio, ConsentEvent.created_at < fim)
+                      .order_by(ConsentEvent.created_at.desc()).limit(50).all())
+
+    visitantes = {}
+    ids = {e.visitor_id for e in eventos.items if e.visitor_id}
+    ids |= {c.visitor_id for c in consentimentos if c.visitor_id}
+    if ids:
+        visitantes = {v.id: v.full_name for v in Visitor.query.filter(Visitor.id.in_(ids)).all()}
+
+    return render_template(
+        "admin/audit.html",
+        eventos=eventos, tipos=tipos, tipo=tipo,
+        consentimentos=consentimentos, visitantes=visitantes,
+        de=de.isoformat(), ate=ate.isoformat(),
+    )
+
+
 # ─── Admin Users ──────────────────────────────────────────────────────────────────────────────────
 
 @bp.get("/usuarios")

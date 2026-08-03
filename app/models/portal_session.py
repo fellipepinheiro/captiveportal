@@ -23,6 +23,7 @@ class PortalSession(db.Model):
     user_agent  = db.Column(db.String(300))
     device_type = db.Column(db.String(30))          # mobile | desktop | tablet
     os_hint     = db.Column(db.String(50))          # Android, iOS, Windows…
+    language    = db.Column(db.String(20))          # idioma preferido do navegador
 
     # Geolocalizacao (informada pelo navegador, mediante consentimento)
     latitude          = db.Column(db.Numeric(10, 7))

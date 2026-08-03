@@ -36,8 +36,15 @@ def register_commands(app):
         from app.services.session_sync import sync_all
 
         while True:
-            for slug, resultado in sync_all().items():
-                click.echo(f"[{slug}] {resultado}")
+            try:
+                for slug, resultado in sync_all().items():
+                    click.echo(f"[{slug}] {resultado}")
+            finally:
+                # Encerra a transacao a cada ciclo. Sem isso a conexao fica
+                # aberta durante todo o sleep, segurando metadata lock em
+                # portal_sessions — e qualquer ALTER TABLE de migration fica
+                # esperando indefinidamente pelo container de sincronizacao.
+                db.session.remove()
             if not interval:
                 break
             time.sleep(interval)

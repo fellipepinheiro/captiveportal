@@ -1,0 +1,157 @@
+{% extends 'admin/base_admin.html' %}
+{% block title %}Auditoria{% endblock %}
+{% block content %}
+
+<div class="mb-5">
+  <h1 class="text-xl font-bold text-white">Auditoria</h1>
+  <p class="text-sm text-slate-500 mt-0.5">
+    Histórico de acessos, ações do painel e consentimento — para compliance e investigação
+  </p>
+</div>
+
+<form method="get" class="bg-slate-900 border border-white/5 rounded-2xl p-4 mb-5 flex flex-wrap items-end gap-3">
+  <div>
+    <label class="block text-xs text-slate-500 mb-1">De</label>
+    <input type="date" name="de" value="{{ de }}"
+           class="rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-slate-100
+                  focus:outline-none focus:border-teal-500/50">
+  </div>
+  <div>
+    <label class="block text-xs text-slate-500 mb-1">Até</label>
+    <input type="date" name="ate" value="{{ ate }}"
+           class="rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-slate-100
+                  focus:outline-none focus:border-teal-500/50">
+  </div>
+  <div>
+    <label class="block text-xs text-slate-500 mb-1">Tipo de evento</label>
+    <select name="tipo"
+            class="rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-slate-100
+                   focus:outline-none focus:border-teal-500/50 min-w-[180px]">
+      <option value="">Todos</option>
+      {% for t in tipos %}
+      <option value="{{ t }}" {% if tipo == t %}selected{% endif %}>{{ t }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <button type="submit" class="rounded-xl px-4 py-2 text-sm font-semibold btn-accent">Aplicar</button>
+  {% if tipo or request.args.get('de') %}
+  <a href="{{ url_for('admin.audit') }}"
+     class="rounded-lg px-2.5 py-2 text-xs text-slate-500 hover:text-slate-300 transition">Limpar</a>
+  {% endif %}
+</form>
+
+<!-- ── Eventos ─────────────────────────────────────────────────────────── -->
+<div class="bg-slate-900 border border-white/5 rounded-2xl overflow-hidden mb-5">
+  <div class="px-4 py-3 border-b border-white/5 flex items-center justify-between">
+    <h2 class="text-sm font-medium text-white">Eventos</h2>
+    <span class="text-xs text-slate-500">{{ eventos.total }} no período</span>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-xs text-slate-500 border-b border-white/5">
+          <th class="text-left px-4 py-2.5 font-medium">Quando</th>
+          <th class="text-left px-4 py-2.5 font-medium">Evento</th>
+          <th class="text-left px-4 py-2.5 font-medium">Detalhe</th>
+          <th class="text-left px-4 py-2.5 font-medium hidden lg:table-cell">Visitante</th>
+          <th class="text-left px-4 py-2.5 font-medium hidden md:table-cell">Origem</th>
+          <th class="text-left px-4 py-2.5 font-medium hidden xl:table-cell">IP</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-white/5">
+        {% for e in eventos.items %}
+        <tr class="hover:bg-white/3 transition">
+          <td class="px-4 py-2.5 text-xs text-slate-400 whitespace-nowrap">
+            {{ e.created_at | datahora('%d/%m/%Y %H:%M:%S') }}
+          </td>
+          <td class="px-4 py-2.5">
+            <span class="rounded-full px-2 py-0.5 text-xs font-medium
+              {% if e.status == 'SUCCESS' %}bg-emerald-500/15 text-emerald-400
+              {% else %}bg-rose-500/15 text-rose-400{% endif %}">{{ e.event_type }}</span>
+          </td>
+          <td class="px-4 py-2.5 text-xs text-slate-400">
+            {{ e.payload or '—' }}
+            {% if e.error_message %}
+            <span class="block text-slate-600">{{ e.error_message }}</span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-2.5 text-xs hidden lg:table-cell">
+            {% if e.visitor_id and visitantes.get(e.visitor_id) %}
+              <a href="{{ url_for('admin.visitor_detail', vid=e.visitor_id) }}"
+                 class="text-slate-300 hover:text-teal-300 transition">{{ visitantes[e.visitor_id] }}</a>
+            {% else %}<span class="text-slate-600">—</span>{% endif %}
+          </td>
+          <td class="px-4 py-2.5 text-xs text-slate-500 hidden md:table-cell">{{ e.actor or '—' }}</td>
+          <td class="px-4 py-2.5 text-xs text-slate-500 font-mono hidden xl:table-cell">{{ e.ip_address or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="px-4 py-10 text-center text-sm text-slate-600">
+          Nenhum evento registrado neste período.
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+{% if eventos.pages > 1 %}
+<div class="flex justify-center flex-wrap gap-2 mb-5">
+  {% for p in eventos.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+    {% if p %}
+      <a href="{{ url_for('admin.audit', page=p, de=de, ate=ate, tipo=tipo) }}"
+         class="px-3 py-1 rounded text-sm {% if p == eventos.page %}btn-accent text-white{% else %}bg-white/10 text-white/70 hover:bg-white/20{% endif %}">{{ p }}</a>
+    {% else %}
+      <span class="px-3 py-1 text-white/30">…</span>
+    {% endif %}
+  {% endfor %}
+</div>
+{% endif %}
+
+<!-- ── Consentimento ───────────────────────────────────────────────────── -->
+<div class="bg-slate-900 border border-white/5 rounded-2xl overflow-hidden">
+  <div class="px-4 py-3 border-b border-white/5">
+    <h2 class="text-sm font-medium text-white">Consentimento (LGPD)</h2>
+    <p class="text-xs text-slate-600 mt-0.5">Registro de aceite dos termos, com versão, IP e origem</p>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-xs text-slate-500 border-b border-white/5">
+          <th class="text-left px-4 py-2.5 font-medium">Quando</th>
+          <th class="text-left px-4 py-2.5 font-medium">Visitante</th>
+          <th class="text-left px-4 py-2.5 font-medium">Evento</th>
+          <th class="text-left px-4 py-2.5 font-medium">Versão</th>
+          <th class="text-left px-4 py-2.5 font-medium hidden md:table-cell">Marketing</th>
+          <th class="text-left px-4 py-2.5 font-medium hidden lg:table-cell">IP</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-white/5">
+        {% for c in consentimentos %}
+        <tr class="hover:bg-white/3 transition">
+          <td class="px-4 py-2.5 text-xs text-slate-400 whitespace-nowrap">
+            {{ c.created_at | datahora('%d/%m/%Y %H:%M:%S') }}
+          </td>
+          <td class="px-4 py-2.5 text-xs">
+            {% if visitantes.get(c.visitor_id) %}
+              <a href="{{ url_for('admin.visitor_detail', vid=c.visitor_id) }}"
+                 class="text-slate-300 hover:text-teal-300 transition">{{ visitantes[c.visitor_id] }}</a>
+            {% else %}<span class="text-slate-600">(excluído)</span>{% endif %}
+          </td>
+          <td class="px-4 py-2.5 text-xs text-slate-400">{{ c.event_type }}</td>
+          <td class="px-4 py-2.5 text-xs text-slate-300">{{ c.terms_version }}</td>
+          <td class="px-4 py-2.5 text-xs hidden md:table-cell">
+            {% if c.marketing_opt_in %}<span class="text-emerald-400">sim</span>
+            {% else %}<span class="text-slate-600">não</span>{% endif %}
+          </td>
+          <td class="px-4 py-2.5 text-xs text-slate-500 font-mono hidden lg:table-cell">{{ c.ip_address or '—' }}</td>
+        </tr>
+        {% else %}
+        <tr><td colspan="6" class="px-4 py-10 text-center text-sm text-slate-600">
+          Nenhum registro de consentimento neste período.
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

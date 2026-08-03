@@ -157,6 +157,53 @@
   </div>
 </div>
 
+<!-- ── Autenticação ────────────────────────────────────────────────────── -->
+<div class="grid lg:grid-cols-3 gap-4 mb-4">
+  <div class="bg-slate-900 border border-white/5 rounded-2xl p-4">
+    <h2 class="text-white/70 text-xs uppercase tracking-wide mb-1">Autenticação</h2>
+    <p class="text-xs text-slate-600 mb-3">Tentativas de acesso ao portal</p>
+    <p id="auth-taxa" class="text-3xl font-bold text-white tabular-nums">—</p>
+    <p id="auth-sub" class="text-xs text-slate-600 mt-1">&nbsp;</p>
+    <p class="text-xs text-slate-600 mt-3 leading-relaxed">
+      Considera o portal inteiro; não segue os filtros de loja e cliente,
+      pois boa parte das falhas ocorre antes da identificação.
+    </p>
+  </div>
+  <div class="lg:col-span-2 bg-slate-900 border border-white/5 rounded-2xl p-4">
+    <h2 class="text-white/70 text-xs uppercase tracking-wide mb-1">Por que o acesso falhou</h2>
+    <p class="text-xs text-slate-600 mb-3">Motivos das tentativas recusadas</p>
+    <div id="chartMotivos" style="height:200px"></div>
+  </div>
+</div>
+
+<!-- ── Pontos de acesso e idiomas ──────────────────────────────────────── -->
+<div class="grid lg:grid-cols-3 gap-4 mb-4">
+  <div class="lg:col-span-2 bg-slate-900 border border-white/5 rounded-2xl overflow-hidden">
+    <div class="px-4 py-3 border-b border-white/5">
+      <h2 class="text-sm font-medium text-white">Pontos de acesso</h2>
+      <p class="text-xs text-slate-600 mt-0.5">Por qual AP os visitantes entraram</p>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-xs text-slate-500 border-b border-white/5">
+            <th class="text-left px-4 py-2.5 font-medium">AP (MAC)</th>
+            <th class="text-right px-4 py-2.5 font-medium">Conexões</th>
+            <th class="text-right px-4 py-2.5 font-medium">Visitantes</th>
+            <th class="text-right px-4 py-2.5 font-medium">Tráfego</th>
+            <th class="text-right px-4 py-2.5 font-medium">Último acesso</th>
+          </tr>
+        </thead>
+        <tbody id="tbody-aps" class="divide-y divide-white/5"></tbody>
+      </table>
+    </div>
+  </div>
+  <div class="bg-slate-900 border border-white/5 rounded-2xl p-4">
+    <h2 class="text-white/70 text-xs uppercase tracking-wide mb-3">Idiomas</h2>
+    <div id="chartIdiomas" style="height:220px"></div>
+  </div>
+</div>
+
 <!-- ── Ranking de lojas ────────────────────────────────────────────────── -->
 <div class="bg-slate-900 border border-white/5 rounded-2xl overflow-hidden mb-4">
   <div class="px-4 py-3 border-b border-white/5">
@@ -223,7 +270,7 @@ const CORES = ['#14b8a6', '#6366f1', '#f59e0b', '#22c55e', '#ec4899', '#8b5cf6']
 const DIAS  = ['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
 
 const graficos = {};
-['Tendencia','Heatmap','Frequencia','Permanencia','Dispositivos','Sistemas','Distancia'].forEach(n => {
+['Tendencia','Heatmap','Frequencia','Permanencia','Dispositivos','Sistemas','Distancia','Motivos','Idiomas'].forEach(n => {
   const el = document.getElementById('chart' + n);
   if (el) {
     graficos[n] = echarts.init(el, 'dark');
@@ -402,6 +449,30 @@ async function carregar() {
                itemStyle: { color: CORES[2], borderRadius: [0, 4, 4, 0] }, barWidth: '55%' }],
   });
 
+  // autenticação
+  const a = d.autenticacao;
+  document.getElementById('auth-taxa').textContent =
+    a.total ? a.taxa_sucesso + '%' : '—';
+  document.getElementById('auth-sub').textContent =
+    a.total ? (num(a.liberados) + ' liberados · ' + num(a.negados) + ' recusados')
+            : 'nenhuma tentativa registrada';
+
+  graficos.Motivos.setOption(a.motivos.length ? {
+    tooltip: { trigger: 'axis' },
+    grid: { left: 150, right: 24, top: 10, bottom: 24 },
+    xAxis: { type: 'value', axisLabel: { color: '#64748b', fontSize: 10 },
+             splitLine: { lineStyle: { color: '#1e293b' } } },
+    yAxis: { type: 'category', data: a.motivos.map(x => x.name).reverse(),
+             axisLabel: { color: '#94a3b8', fontSize: 10 } },
+    series: [{ type: 'bar', data: a.motivos.map(x => x.value).reverse(),
+               itemStyle: { color: '#f43f5e', borderRadius: [0, 4, 4, 0] }, barWidth: '55%' }],
+  } : {
+    title: { text: 'Nenhuma tentativa recusada no período', left: 'center', top: 'middle',
+             textStyle: { color: '#475569', fontSize: 12, fontWeight: 'normal' } },
+  });
+
+  graficos.Idiomas.setOption(pizza(d.idiomas));
+
   const vazio = c => '<tr><td colspan="' + c + '" class="px-4 py-6 text-center text-xs text-slate-600">Sem dados no período</td></tr>';
 
   document.getElementById('tbody-lojas').innerHTML = d.lojas.length ? d.lojas.map(l => `
@@ -411,6 +482,15 @@ async function carregar() {
       <td class="px-4 py-2.5 text-right tabular-nums text-slate-300">${num(l.visitantes)}</td>
       <td class="px-4 py-2.5 text-right tabular-nums text-slate-400">${minutos(l.conexoes ? Math.round(l.minutos / l.conexoes) : 0)}</td>
       <td class="px-4 py-2.5 text-right tabular-nums text-slate-400">${bytes(l.bytes)}</td>
+    </tr>`).join('') : vazio(5);
+
+  document.getElementById('tbody-aps').innerHTML = d.aps.length ? d.aps.map(ap => `
+    <tr class="hover:bg-white/3 transition">
+      <td class="px-4 py-2.5 font-mono text-xs text-slate-300">${ap.mac}</td>
+      <td class="px-4 py-2.5 text-right tabular-nums text-slate-300">${num(ap.conexoes)}</td>
+      <td class="px-4 py-2.5 text-right tabular-nums text-slate-300">${num(ap.visitantes)}</td>
+      <td class="px-4 py-2.5 text-right tabular-nums text-slate-400">${bytes(ap.bytes)}</td>
+      <td class="px-4 py-2.5 text-right text-xs text-slate-500">${ap.ultima || '—'}</td>
     </tr>`).join('') : vazio(5);
 
   document.getElementById('tbody-consumo').innerHTML = d.top_consumo.length ? d.top_consumo.map(c => `

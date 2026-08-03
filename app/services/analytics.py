@@ -42,6 +42,45 @@ def _local(dt):
     return dt.astimezone(get_tz())
 
 
+def _autenticacao(inicio, fim) -> dict:
+    """Desfecho das tentativas de acesso, a partir do audit_logs.
+
+    Sai do audit_logs e nao das sessoes porque uma tentativa que falhou na
+    validacao (CPF errado, termos recusados) nao gera sessao autorizada —
+    contar so pelas sessoes esconderia justamente o que deu errado.
+
+    Nao aceita filtro de loja ou cliente: o registro de auditoria e por
+    tentativa, e boa parte delas acontece antes de haver visitante ou loja
+    identificados.
+    """
+    from app.models import AuditLog
+
+    linhas = (
+        db.session.query(AuditLog.event_type, AuditLog.payload, func.count())
+        .filter(AuditLog.created_at >= inicio, AuditLog.created_at < fim)
+        .filter(AuditLog.event_type.in_(
+            ['ACESSO_LIBERADO', 'ACESSO_NEGADO', 'CADASTRO_NEGADO']))
+        .group_by(AuditLog.event_type, AuditLog.payload)
+        .all()
+    )
+
+    liberados = sum(n for ev, _, n in linhas if ev == 'ACESSO_LIBERADO')
+    negados = sum(n for ev, _, n in linhas if ev != 'ACESSO_LIBERADO')
+    motivos = sorted(
+        ({'name': payload or 'Não informado', 'value': n}
+         for ev, payload, n in linhas if ev != 'ACESSO_LIBERADO'),
+        key=lambda x: -x['value'],
+    )
+    total = liberados + negados
+    return {
+        'liberados':   liberados,
+        'negados':     negados,
+        'total':       total,
+        'taxa_sucesso': round(liberados / total * 100, 1) if total else 0,
+        'motivos':     motivos,
+    }
+
+
 def coletar(inicio, fim, de, ate, store_id=None, visitor_id=None) -> dict:
     """Monta todos os indicadores do periodo em uma unica passada.
 
@@ -205,6 +244,31 @@ def coletar(inicio, fim, de, ate, store_id=None, visitor_id=None) -> dict:
         ],
     }
 
+    # ── Pontos de acesso ──────────────────────────────────────────────
+    # O ap_mac vem no redirect do controlador, entao da para saber por qual
+    # AP cada visitante entrou — util para achar ponto ocioso ou sobrecarregado.
+    por_ap = defaultdict(lambda: {'conexoes': 0, 'visitantes': set(), 'bytes': 0, 'ultima': None})
+    for s in conexoes:
+        mac = (s.ap_mac or '').lower()
+        if not mac:
+            continue
+        r = por_ap[mac]
+        r['conexoes'] += 1
+        if s.visitor_id:
+            r['visitantes'].add(s.visitor_id)
+        r['bytes'] += (s.bytes_down or 0) + (s.bytes_up or 0)
+        quando = s.authorized_at or s.created_at
+        if r['ultima'] is None or quando > r['ultima']:
+            r['ultima'] = quando
+    aps = sorted(
+        ({'mac': k, 'conexoes': v['conexoes'], 'visitantes': len(v['visitantes']),
+          'bytes': v['bytes'], 'ultima': _local(v['ultima']).strftime('%d/%m %H:%M') if v['ultima'] else None}
+         for k, v in por_ap.items()),
+        key=lambda x: -x['conexoes'],
+    )
+
+    idiomas = Counter((s.language or 'Não informado') for s in conexoes)
+
     dispositivos = Counter((s.device_type or 'Desconhecido') for s in conexoes)
     sistemas = Counter((s.os_hint or 'Desconhecido') for s in conexoes)
 
@@ -227,6 +291,9 @@ def coletar(inicio, fim, de, ate, store_id=None, visitor_id=None) -> dict:
             'bytes_total':    bytes_down + bytes_up,
             'bytes_medio':    round((bytes_down + bytes_up) / total_conexoes) if total_conexoes else 0,
         },
+        'autenticacao':  _autenticacao(inicio, fim),
+        'aps':           aps,
+        'idiomas':       [{'name': k, 'value': v} for k, v in idiomas.most_common()],
         'origem':        origem,
         'tendencia':     tendencia,
         'heatmap':       heatmap,

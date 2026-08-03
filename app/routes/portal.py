@@ -9,7 +9,8 @@ from app.extensions import db, limiter, csrf
 from app.models import Visitor, PortalSession, Store
 from app.models.site_config import SiteConfig
 from app.services.portal_service import (
-    create_pending_session, authorize_visitor, record_consent, refresh_consent
+    create_pending_session, authorize_visitor, record_consent, refresh_consent,
+    log_acesso
 )
 from app.services.validator import (
     validate_cpf, validate_phone, validate_email, normalize_phone, normalize_cpf
@@ -99,6 +100,7 @@ def entry(slug="default"):
 def identify():
     portal_session = _get_portal_session()
     if not portal_session:
+        log_acesso("ACESSO_NEGADO", "SESSAO_EXPIRADA")
         flash("Sess\u00e3o expirada. Por favor, conecte-se novamente ao WiFi.", "error")
         return redirect(url_for("portal.entry"))
 
@@ -106,15 +108,19 @@ def identify():
     mobile = request.form.get("mobile", "").strip()
 
     if not cpf or not mobile:
+        log_acesso("ACESSO_NEGADO", "CAMPOS_VAZIOS", portal_session)
         flash("Preencha CPF e celular.", "error")
         return redirect(url_for("portal.entry"))
     if not validate_cpf(cpf):
+        log_acesso("ACESSO_NEGADO", "CPF_INVALIDO", portal_session)
         flash("CPF inv\u00e1lido.", "error")
         return redirect(url_for("portal.entry"))
     if not validate_phone(mobile):
+        log_acesso("ACESSO_NEGADO", "TELEFONE_INVALIDO", portal_session)
         flash("N\u00famero de celular inv\u00e1lido.", "error")
         return redirect(url_for("portal.entry"))
     if not request.form.get("terms_accepted"):
+        log_acesso("ACESSO_NEGADO", "TERMOS_RECUSADOS", portal_session)
         flash("Voc\u00ea precisa aceitar os Termos de Uso para continuar.", "error")
         return redirect(url_for("portal.entry"))
 
@@ -123,6 +129,8 @@ def identify():
     visitor = Visitor.find_by_cpf(cpf_norm)
     if visitor:
         if visitor.is_blocked:
+            log_acesso("ACESSO_NEGADO", "VISITANTE_BLOQUEADO", portal_session, visitor,
+                       detalhe=visitor.block_reason)
             flash("Seu acesso foi restrito. Entre em contato com o suporte.", "error")
             return redirect(url_for("portal.entry"))
 
@@ -143,12 +151,14 @@ def identify():
         store = _get_session_store(portal_session)
         ok = authorize_visitor(portal_session, visitor, store)
         if ok:
+            log_acesso("ACESSO_LIBERADO", portal_session=portal_session, visitor=visitor)
             return render_template(
                 "portal/success.html",
                 redirect_url=portal_session.redirect_url,
                 name=visitor.full_name,
                 **_portal_cfg(),
             )
+        log_acesso("ACESSO_NEGADO", "UNIFI_FALHOU", portal_session, visitor)
         flash("N\u00e3o foi poss\u00edvel autorizar o acesso agora. Tente novamente.", "error")
         return redirect(url_for("portal.entry"))
 
@@ -231,9 +241,11 @@ def register_submit():
     terms_version  = current_app.config.get("TERMS_VERSION", "1.0")
 
     if not full_name or len(full_name.split()) < 2:
+        log_acesso("CADASTRO_NEGADO", "NOME_INVALIDO", portal_session)
         flash("Informe seu nome completo (m\u00ednimo 2 palavras).", "error")
         return redirect(url_for("portal.register"))
     if email and not validate_email(email):
+        log_acesso("CADASTRO_NEGADO", "EMAIL_INVALIDO", portal_session)
         flash("E-mail inv\u00e1lido.", "error")
         return redirect(url_for("portal.register"))
 
@@ -252,6 +264,7 @@ def register_submit():
             db.session.rollback()
             visitor = Visitor.query.filter_by(cpf=cpf).first()
             if visitor is None:
+                log_acesso("CADASTRO_NEGADO", "ERRO_CADASTRO", portal_session)
                 flash("Erro ao cadastrar. Tente novamente.", "error")
                 return redirect(url_for("portal.register"))
 
@@ -266,11 +279,13 @@ def register_submit():
     session.pop("reg_mobile", None)
 
     if ok:
+        log_acesso("ACESSO_LIBERADO", portal_session=portal_session, visitor=visitor)
         return render_template(
             "portal/success.html",
             redirect_url=portal_session.redirect_url,
             name=visitor.full_name,
             **_portal_cfg(),
         )
+    log_acesso("ACESSO_NEGADO", "UNIFI_FALHOU", portal_session, visitor)
     flash("Cadastro realizado, mas n\u00e3o foi poss\u00edvel autorizar agora. Tente novamente.", "error")
     return redirect(url_for("portal.entry"))
