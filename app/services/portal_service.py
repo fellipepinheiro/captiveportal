@@ -43,6 +43,15 @@ def authorize_visitor(portal_session: PortalSession, visitor: Visitor, store: St
 
     try:
         unifi = get_unifi_for_store(store)
+        if unifi.mock_involuntario:
+            # Liberar aqui seria mentir para o visitante: o controlador nunca
+            # foi avisado, entao o aparelho continua sem internet por mais que
+            # a tela diga "acesso liberado".
+            logger.error(
+                '[UniFi] loja %s esta sem endereco de controlador — acesso nao liberado',
+                store.slug if store else '(sem loja)',
+            )
+            return False
         client = unifi.find_client_by_mac(site_id, portal_session.client_mac)
         if not client or not client.get('id'):
             logger.warning(

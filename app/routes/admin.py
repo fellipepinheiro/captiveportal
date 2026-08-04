@@ -895,6 +895,15 @@ def store_test(sid: int):
     store = Store.query.get_or_404(sid)
     try:
         unifi = get_unifi_for_store(store)
+        # Sem endereco de controlador o cliente responde com dados falsos, e
+        # o teste diria "conexao OK" para uma loja que nao libera ninguem.
+        if unifi.mock_involuntario:
+            return jsonify({
+                "ok": False,
+                "error": "Loja sem endereço do controlador. Preencha a URL do "
+                         "UniFi (ex.: https://192.168.1.1) — sem ela nenhum "
+                         "visitante é liberado.",
+            }), 400
         sites = unifi.get_sites()
         return jsonify({"ok": True, "mock": unifi.mock, "sites": sites})
     except UnifiAPIError as exc:

@@ -50,11 +50,23 @@ def _api_error(exc: Exception, resp=None) -> UnifiAPIError:
     if resp is not None:
         try:
             body = resp.json()
-            code = body.get('code')
-            if body.get('message'):
-                detalhe = f"{body['message']} (HTTP {status})"
+            # A API usa duas formas: campos na raiz e aninhados em "error"
+            # (ex.: {"error":{"code":401,"message":"Unauthorized"}}). Ler so
+            # a raiz descartava justamente as mensagens de autenticacao.
+            erro = body.get('error') if isinstance(body.get('error'), dict) else {}
+            code = body.get('code') or erro.get('code')
+            mensagem = body.get('message') or erro.get('message')
+            if mensagem:
+                detalhe = f"{mensagem} (HTTP {status})"
         except Exception:
-            pass
+            # Corpo nao-JSON (tipicamente a pagina HTML do console quando a
+            # URL aponta para fora da API). O texto do JSONDecodeError nao
+            # diz nada util; o status e a pista que importa.
+            if status:
+                detalhe = (f"resposta inesperada do controlador (HTTP {status}) — "
+                           f"confira se a URL termina em /proxy/network/integration")
+    if status == 401:
+        detalhe = "API Key recusada pelo controlador (HTTP 401)"
     return UnifiAPIError(detalhe, status_code=status, code=code)
 
 
@@ -114,15 +126,35 @@ class UnifiAPI:
         self.timeout = timeout
         _placeholder = 'https://seu-unifi.exemplo.com'
 
+        #: A loja tem endereco de controlador utilizavel?
+        self.configurado = bool(self.base_url) and self.base_url != _placeholder
+
         override = _mock_override()
         if override is None:
-            self.mock = DEV_MODE or not self.base_url or self.base_url == _placeholder
+            self.mock = DEV_MODE or not self.configurado
         else:
             # Sem base_url nao ha o que chamar — mock continua obrigatorio.
-            self.mock = override or not self.base_url or self.base_url == _placeholder
+            self.mock = override or not self.configurado
+
+        #: Mock que ninguem pediu — a loja esta sem endereco de controlador e
+        #: o ambiente nao e de desenvolvimento (ou pediu explicitamente para
+        #: NAO mockar). Sem esta distincao a falha se disfarca de sucesso: as
+        #: chamadas retornam ok, o portal libera o visitante e o controlador
+        #: nunca fica sabendo — o aparelho segue sem internet.
+        self.mock_involuntario = (
+            self.mock
+            and not self.configurado
+            and (override is False or (override is None and not DEV_MODE))
+        )
 
         if not self.mock:
             self.session = _build_session(api_key, verify_ssl)
+        elif self.mock_involuntario:
+            logger.error(
+                '[UniFi] loja sem unifi_base_url — nenhuma chamada real sera feita '
+                'e nenhum visitante sera liberado no controlador. Configure o '
+                'endereco do controlador em Lojas.'
+            )
         else:
             logger.info('[UniFi] Modo MOCK ativo — nenhuma chamada real sera feita.')
 
