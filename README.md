@@ -7,24 +7,105 @@ Portal de autenticação de visitantes para redes Wi-Fi corporativas, integrado 
 ## ✨ Funcionalidades
 
 ### Portal público (visitante)
-- Tela de identificação por **CPF** e **celular** (formato BR)
-- Cadastro com **nome completo** e **e-mail opcional**
-- Validação de CPF (dígitos verificadores); busca aceita com ou sem máscara
-- Aceite de **Termos de Uso** e **Política de Privacidade** com registro de versão (LGPD)
+- **Campos definidos pelo administrador** — quais dados pedir no login e no
+  cadastro é configurável, com lista pronta (CPF, celular, e-mail, nome, CEP,
+  data de nascimento…) e campos livres. O admin escolhe qual campo é a
+  **chave** que identifica o visitante recorrente
+- Validação por tipo: CPF com dígitos verificadores, celular no formato BR,
+  e-mail; busca aceita com ou sem máscara
+- **Erros no campo que os causou**, sem apagar o que já foi preenchido
+- Aceite de **Termos de Uso** com registro de versão (LGPD)
 - Opt-in de comunicações de marketing
-- Redirecionamento automático pós-autorização
+- Coleta de **localização aproximada** mediante consentimento (junto do aceite
+  dos termos), para saber de onde vêm os clientes
+- Tela de sucesso autônoma (HTML e CSS embutidos, sem dependência externa) com
+  **contador que devolve o visitante à página que ele tentava abrir**, ou ao
+  destino configurado na loja quando não há página de origem
 
 ### Painel administrativo (`/admin`)
-- **Dashboard** com KPIs em tempo real (total de visitantes, sessões, taxa de autorização)
-- **Relatórios** com gráficos interativos por período, distribuição por dispositivo e sistema operacional
-- **Gestão de visitantes** — busca por nome/CPF/celular/e-mail, bloqueio/desbloqueio com motivo, exclusão de cadastro (LGPD) e exportação CSV
-- **Extrato por visitante** — conexões e desconexões em um período, com duração e exportação CSV
-- **Lojas** — cadastro de várias controladoras UDM Pro, uma por loja, com teste de conexão
+- **Dashboard** com KPIs em tempo real (total de visitantes, sessões, taxa de
+  autorização) e botão para derrubar a sessão de cada dispositivo
+- **Relatórios de BI** com filtros por loja, período e cliente: volume de
+  acessos, visitantes novos × recorrentes, pico por dia e hora, tempo médio de
+  conexão, download/upload por período, distribuição por dispositivo e sistema
+  operacional, ranking de pontos de acesso e **origem geográfica** dos
+  visitantes (distância até a loja). Exportação CSV
+- **Relatório de autenticação e saúde** — taxa de sucesso, motivos de falha
+  (CPF inválido, termos recusados, falha no controlador…) e tentativas negadas
+- **Inventário de pontos de acesso** — quais APs atenderam visitantes e quanto
+- **Auditoria e consentimento (LGPD)** — trilha de ações administrativas,
+  histórico de consentimento por versão dos termos e tentativas de login
+- **Gestão de visitantes** — busca, bloqueio/desbloqueio com motivo (derruba as
+  conexões ativas junto), exclusão de cadastro (LGPD) e exportação CSV
+- **Extrato por visitante** — conexões e desconexões em um período, com duração
+  e exportação CSV
+- **Lojas** — cadastro de várias controladoras UDM Pro, uma por loja, com teste
+  de conexão, endereço/coordenadas, conexões ativas no controlador e botões
+  para derrubar uma ou **todas** as conexões
+- **Campos do formulário** — define o que o portal pede no login e no cadastro
 - **Gestão de usuários** admin — criar, ativar/desativar, redefinir senha, excluir
 - **Perfil pessoal** — nome, e-mail, telefone, foto de perfil (compressão automática via Pillow) e **alteração de senha com verificação da senha atual**
 - **Aparência do portal** — título, mensagem de boas-vindas, cores e logo customizáveis
 - **Integrações** — Webhook com HMAC-SHA256 e botão de teste
   (as credenciais do UniFi ficam em **Lojas**, por controlador)
+
+### WhatsApp (`/admin/whatsapp`)
+Tela para cadastrar o provedor e a mensagem de boas-vindas, sem mexer em
+webhook. Dois provedores:
+
+- **WhatsGW** — gateway brasileiro, texto livre, mais rápido de começar
+- **WhatsApp Cloud API** (Meta) — oficial; o primeiro contato acontece fora da
+  janela de 24 h, então **exige template aprovado**, e a tela pede o nome dele
+
+Editor com variáveis clicáveis (`{primeiro_nome}`, `{loja}`, `{rede}`), prévia
+ao vivo no estilo da conversa e botão que **envia um teste real** para o número
+que você digitar. A chave fica guardada no banco e nunca é reexibida na tela.
+
+Há um interruptor **"só para quem aceitou receber comunicações"**, ligado por
+padrão: saudação institucional é uma coisa, oferta comercial é outra (LGPD
+Art. 7º).
+
+### IP real do visitante
+O endereço que o Flask enxerga é o do último salto até o container. Com o
+portal publicado por Docker, a NAT troca a origem e **todo visitante aparece
+como o gateway** — `192.168.65.1` no Docker Desktop. Atrás do nginx o
+`X-Forwarded-For` resolve (já configurado, via `ProxyFix`), mas publicando a
+porta direto não há proxy nenhum.
+
+Por isso o IP vem do **controlador**, que conhece o endereço real na VLAN de
+visitantes: é gravado na autorização (o cliente já é consultado ali) e
+mantido pelo serviço `session_sync`, que também corrige sessões antigas.
+
+`TRUST_PROXY_HOPS` controla a leitura do `X-Forwarded-For`: `1` (padrão) é o
+correto atrás do nginx; use `0` quando o portal for publicado direto, senão
+qualquer cliente pode mandar o header e escolher que IP fica registrado.
+
+### Diagnóstico (`/admin/diagnostico`)
+Mostra se o portal está falando com os controladores **de verdade** ou apenas
+simulando, loja por loja: motivo da simulação, se o controlador responde, URL,
+Site ID e se há API Key. Tem botão para verificar na hora.
+
+Quando alguma loja ativa está em simulação, um **selo aparece no topo de toda
+tela do painel** — vermelho quando é involuntária (loja sem endereço de
+controlador, caso em que o visitante vê "acesso liberado" e segue sem
+internet) e amarelo quando foi ligada de propósito. O selo consulta só a
+configuração, sem chamar a rede, para não deixar o painel lento.
+
+### Gatilho de primeira visita
+Quando alguém entra na rede pela **primeira vez**, o sistema registra o evento
+`PRIMEIRA_VISITA` na auditoria e dispara um webhook próprio (`first_visit`),
+separado do `guest_authorized`. É a base para acolher quem chega: no varejo,
+a primeira oferta; na igreja, o aviso de visitante novo para quem faz
+integração.
+
+O payload leva `visitor_mobile` — o canal, tipicamente WhatsApp — e
+`marketing_optin`, que diz se houve consentimento para comunicação
+promocional. **Quem recebe precisa respeitar esse campo:** mensagem de
+boas-vindas é uma coisa, oferta é outra.
+
+A detecção usa o histórico de sessões autorizadas, não o contador
+`visit_count` — o contador serve para relatório, mas não é confiável como
+gatilho: ele avança em `touch()` e antes disso já vinha inflado pelo cadastro.
 
 ### Integração UniFi
 - Autorização via API REST de integração, autenticando por header `X-API-KEY`
@@ -37,11 +118,24 @@ Portal de autenticação de visitantes para redes Wi-Fi corporativas, integrado 
 
 ### Segurança
 - Senhas com hash **bcrypt**
-- Proteção **CSRF** em todos os formulários (Flask-WTF)
-- **Rate limiting** por rota (Flask-Limiter)
+- Proteção **CSRF** em todos os formulários do painel (Flask-WTF). As rotas do
+  portal são isentas por necessidade: quem chega ainda não tem sessão e o
+  fluxo é iniciado por um redirect do controlador
+- **Rate limiting** por rota (Flask-Limiter) — login 10/min, derrubar todas
+  6/min, cadastro 5/min
+- **Tentativas de login malsucedidas registradas na auditoria**, com usuário
+  tentado e IP (a senha nunca é gravada)
+- Headers de segurança em todas as respostas: CSP, `X-Frame-Options: DENY`,
+  `nosniff`, HSTS (fora de debug), `Referrer-Policy`, `Permissions-Policy`
+- Cookie de sessão `HttpOnly` + `SameSite=Lax`, expira em 1 h
+- Upload restrito a imagens (`png/jpg/jpeg/webp`), nome saneado com
+  `secure_filename`, limite de 20 MB
 - Webhook assinado com **HMAC-SHA256** (`X-Webhook-Signature`)
-- Criptografia de dados PII com **Fernet** (opcional)
 - Registro de **audit log** e **consent events** (LGPD)
+- Consultas via ORM — não há SQL montado por concatenação
+- Templates com autoescape do Jinja e **sem nenhum uso de `|safe`**
+
+> Pendências conhecidas estão em [Segurança — pontos em aberto](#-segurança--pontos-em-aberto).
 
 ---
 
@@ -56,26 +150,32 @@ captiveportal/
 │   ├── security.py           # Headers de segurança HTTP
 │   ├── cli.py                # Comandos Flask CLI
 │   ├── models/
-│   │   ├── visitor.py            # Visitante (dados + CPF + consentimento)
-│   │   ├── portal_session.py     # Sessão de acesso (MAC, AP, SSID, device)
+│   │   ├── visitor.py            # Visitante (dados + consentimento)
+│   │   ├── portal_session.py     # Sessão de acesso (MAC, AP, SSID, device, GPS)
+│   │   ├── store.py              # Loja + credenciais do seu UDM Pro
+│   │   ├── form_field.py         # Campos configuráveis do login/cadastro
 │   │   ├── admin_user.py         # Usuário admin (bcrypt, avatar, perfil)
 │   │   ├── site_config.py        # Configurações dinâmicas (key-value)
 │   │   ├── audit_log.py          # Log de auditoria
 │   │   ├── consent_event.py      # Eventos de consentimento LGPD
-│   │   ├── consent_record.py     # Registro de aceite de termos
-│   │   └── data_subject_request.py  # Solicitações de titulares LGPD
+│   │   ├── consent_record.py     # ⚠️ órfão — não registrado nem usado
+│   │   └── data_subject_request.py  # ⚠️ órfão — não registrado nem usado
 │   ├── routes/
 │   │   ├── portal.py         # Fluxo público: entry → identify → register → success
 │   │   ├── admin.py          # Painel admin completo
 │   │   └── health.py         # GET /health (healthcheck Docker)
 │   ├── services/
-│   │   ├── portal_service.py    # Lógica de sessão e autorização
-│   │   ├── unifi_api.py         # Cliente UniFi REST API
+│   │   ├── portal_service.py    # Lógica de sessão, autorização e revogação
+│   │   ├── unifi_api.py         # Cliente UniFi REST API (por loja)
+│   │   ├── session_sync.py      # Encerra sessões de quem saiu + coleta tráfego
+│   │   ├── analytics.py         # Agregações dos relatórios de BI
+│   │   ├── form_service.py      # Campos dinâmicos: validação e coleta
+│   │   ├── datetime_fmt.py      # Conversão UTC → fuso local (TIMEZONE)
 │   │   ├── webhook_service.py   # Envio de webhooks com assinatura HMAC
 │   │   └── validator.py         # Validação CPF e telefone BR
 │   ├── templates/
-│   │   ├── portal/           # start.html, register.html, success.html
-│   │   └── admin/            # base, dashboard, visitors, reports, users, profile, etc.
+│   │   ├── portal/           # start, register, success, _campo (campo dinâmico)
+│   │   └── admin/            # base, dashboard, visitors, reports, stores, form_fields, etc.
 │   └── static/
 │       └── uploads/          # Logo e avatars (volume Docker persistente)
 ├── migrations/               # Alembic migrations
@@ -268,14 +368,63 @@ def verify(payload: bytes, secret: str, signature: str) -> bool:
 
 ## 🔒 LGPD
 
-O sistema registra automaticamente todos os eventos exigidos pela legislação brasileira:
+### O que está implementado
 
-| Modelo | Conteúdo |
+| Recurso | Onde |
 |---|---|
-| `ConsentRecord` | Aceite dos termos por visitante (versão, IP, timestamp) |
-| `ConsentEvent` | Histórico de opt-in/opt-out de marketing |
-| `DataSubjectRequest` | Solicitações de acesso, exclusão e portabilidade de dados |
-| `AuditLog` | Ações administrativas rastreadas |
+| **Consentimento versionado** — aceite obrigatório a cada acesso, com a versão dos termos gravada no visitante (`terms_version`, `terms_accepted_at`) | `portal_service.record_consent` |
+| **Histórico de consentimento** append-only, com IP, user-agent, canal e opt-in de marketing | `ConsentEvent` (tabela `consent_events`) |
+| **Reaceite quando os termos mudam** — quem se cadastrou numa versão antiga tem o consentimento atualizado ao aceitar a nova | `portal_service.refresh_consent` |
+| **Direito de acesso e portabilidade** (Art. 18, II e V) — exportação CSV por visitante e da base inteira | `/admin/visitantes/<id>/exportar`, `/admin/visitantes/export` |
+| **Direito de exclusão** (Art. 18, VI) — apaga o cadastro e os consentimentos; os registros de conexão são **desvinculados**, não apagados | `/admin/visitantes/<id>/excluir` |
+| **Retenção de logs de conexão por 1 ano**, como exige o Marco Civil (Lei 12.965/2014, Art. 15) | `flask cleanup-sessions --expired-ttl 365` |
+| **Descarte de sessões abandonadas** que nunca se autenticaram | serviço `cleanup` |
+| **Minimização** — o administrador escolhe quais campos coletar; nada é pedido por padrão além do necessário | Campos do formulário |
+| **Transparência sobre a localização** — o item 3 dos termos explica que a localização aproximada é registrada e para quê | `portal/start.html` |
+| **Trilha de auditoria** de ações administrativas e de tentativas de acesso | `AuditLog` (tabela `audit_logs`) |
+
+**Exclusão e Marco Civil convivem assim:** apagar o visitante remove nome, CPF,
+telefone, e-mail e consentimentos. As linhas de `portal_sessions` continuam,
+mas com `visitor_id` nulo — viram registro de conexão anônimo, que é o que a
+lei manda guardar. O registro da própria exclusão na auditoria guarda **apenas
+o id**, nunca o nome: manter o nome ali esvaziaria o direito exercido.
+
+### Pontos em aberto
+
+- ⚠️ **A Política de Privacidade não existe.** `PRIVACY_POLICY_URL` aponta para
+  `/politica-de-privacidade`, que responde **404** — o portal exibe um link
+  quebrado no momento do consentimento. É a pendência mais relevante aqui:
+  consentimento informado pressupõe que o titular consiga ler a política.
+  Publique o documento e ajuste a variável, ou aponte para uma URL externa.
+- ⚠️ **Sem tela de solicitações do titular.** Os pedidos de acesso, correção ou
+  exclusão chegam por fora do sistema e são atendidos manualmente pelo painel.
+  Existem os arquivos `models/consent_record.py` e
+  `models/data_subject_request.py`, mas **não estão em uso** — são restos de
+  uma implementação que não foi concluída e não devem ser tomados como
+  controles ativos.
+- **Dados pessoais em texto puro no banco.** CPF, telefone e e-mail não são
+  cifrados. `FERNET_KEY` existe na configuração mas **não é usada em lugar
+  nenhum**. A LGPD não exige criptografia, mas ela é a salvaguarda esperada
+  para CPF em caso de vazamento (Art. 46).
+- **Sem anonimização automática por prazo.** Passado 1 ano os registros de
+  conexão são purgados, mas o cadastro do visitante permanece indefinidamente
+  enquanto ninguém o excluir.
+
+---
+
+## 🛡️ Segurança — pontos em aberto
+
+Levantados em auditoria do código. Nenhum é exploração conhecida; são
+decisões e lacunas que valem revisão antes de expor o painel fora da LAN.
+
+| Ponto | Situação | Observação |
+|---|---|---|
+| **Cookie de sessão sem `Secure`** | `SESSION_COOKIE_SECURE = False`, inclusive em produção | É deliberado: o portal cativo é servido em HTTP puro pelo IP interno, e `Secure=True` bloquearia o cookie e quebraria o fluxo. O efeito colateral é que o **mesmo cookie do painel** trafega sem TLS. Corrigir de verdade exige separar o cookie do admin do cookie do portal |
+| **API Key do UniFi em texto puro** | Gravada assim na tabela `stores` | Quem lê o banco autoriza visitantes e derruba conexões no controlador. `FERNET_KEY` já existe na configuração, sem uso |
+| **CSP com `unsafe-inline`** | `script-src 'self' 'unsafe-inline' cdn.jsdelivr.net` | Enfraquece a defesa contra XSS. O risco hoje é baixo (autoescape ativo, nenhum `\|safe`), mas some a rede de proteção. O `cdn.jsdelivr.net` serve o ECharts dos relatórios — o painel precisa de internet |
+| **CSRF desativado em desenvolvimento** | `DevelopmentConfig.WTF_CSRF_ENABLED = False` | Só afeta `FLASK_ENV=development`. Atenção ao rodar assim numa máquina com a porta 80 publicada na LAN, como no cenário de teste com o UDM Pro |
+| **Sem bloqueio de conta** | Apenas rate limit de 10/min no login | Suficiente contra força bruta simples; não impede tentativa lenta e distribuída. As tentativas agora ficam registradas na auditoria |
+| **Sem política de senha** | `create-admin` e a troca de senha aceitam qualquer string | Nenhuma exigência de tamanho ou complexidade |
 
 ---
 
@@ -328,16 +477,26 @@ docker compose exec web flask guests --revoke 4a:cb:7c:0b:13:3d
 
 | Método | URL | Descrição |
 |---|---|---|
-| GET | `/guest/s/default/` | Entrada do portal (redirect do AP UniFi) |
-| GET | `/guest/` | Alias da entrada |
+| GET | `/guest/s/<slug>/` | Entrada do portal — o slug identifica a loja/controlador |
+| GET | `/guest/` | Alias da entrada (cai na loja `default`) |
 | POST | `/guest/identify` | Identificação do visitante |
 | GET/POST | `/guest/cadastro` | Cadastro de novo visitante |
+| POST | `/guest/localizacao` | Recebe a localização aproximada (após o aceite) |
 | GET | `/admin` | Dashboard |
 | GET/POST | `/admin/login` | Login admin |
 | GET | `/admin/visitantes` | Lista de visitantes |
-| GET | `/admin/relatorios` | Relatórios e gráficos |
+| GET | `/admin/visitantes/<id>` | Extrato de conexões do visitante |
+| GET | `/admin/relatorios` | Relatórios de BI com filtros |
+| GET | `/admin/auditoria` | Auditoria e consentimento (LGPD) |
+| GET | `/admin/lojas` | Lojas e controladoras UDM Pro |
+| POST | `/admin/lojas/<id>/derrubar` | Derruba uma conexão pelo MAC |
+| POST | `/admin/lojas/<id>/derrubar-todos` | Derruba todas as conexões da loja |
+| GET | `/admin/formulario` | Campos do login e do cadastro |
 | GET | `/admin/usuarios` | Gestão de usuários admin |
 | GET | `/admin/aparencia` | Customização do portal |
-| GET | `/admin/integracoes` | UniFi e Webhook |
+| GET | `/admin/integracoes` | Webhook |
 | GET | `/admin/perfil` | Perfil do usuário logado |
 | GET | `/health` | Healthcheck Docker |
+
+> O mapa acima lista as telas principais. `flask routes` mostra as **61 rotas**
+> registradas, incluindo as ações POST de cada tela.

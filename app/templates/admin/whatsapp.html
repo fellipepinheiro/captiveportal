@@ -1,0 +1,248 @@
+{% extends 'admin/base.html' %}
+{% block title %}WhatsApp{% endblock %}
+
+{% block content %}
+<div class="space-y-6 max-w-3xl">
+
+  <div>
+    <h1 class="text-xl font-semibold text-white">WhatsApp</h1>
+    <p class="text-sm text-slate-400 mt-1">
+      Mensagem automática de boas-vindas para quem entra na rede pela primeira vez.
+    </p>
+  </div>
+
+  <form method="post" action="{{ url_for('admin.whatsapp_save') }}" class="space-y-6">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <!-- ── Liga/desliga e gatilhos ─────────────────────────────────────── -->
+    <div class="bg-slate-900 border border-white/5 rounded-2xl p-5 space-y-4">
+      <label class="flex items-start gap-3 cursor-pointer">
+        <input type="checkbox" name="whatsapp_enabled" {% if habilitado %}checked{% endif %}
+               class="mt-0.5 h-4 w-4 accent-teal-500">
+        <span>
+          <span class="text-sm text-white">Enviar mensagens pelo WhatsApp</span>
+          <span class="block text-xs text-slate-500">Desligado, nada é enviado — o resto da configuração fica guardado.</span>
+        </span>
+      </label>
+
+      <label class="flex items-start gap-3 cursor-pointer">
+        <input type="checkbox" name="gatilho_primeira_visita" {% if gatilho_pv %}checked{% endif %}
+               class="mt-0.5 h-4 w-4 accent-teal-500">
+        <span>
+          <span class="text-sm text-white">Na primeira visita do cliente</span>
+          <span class="block text-xs text-slate-500">Dispara quando alguém acessa a rede pela primeira vez.</span>
+        </span>
+      </label>
+
+      <label class="flex items-start gap-3 cursor-pointer">
+        <input type="checkbox" name="somente_optin" {% if somente_optin %}checked{% endif %}
+               class="mt-0.5 h-4 w-4 accent-teal-500">
+        <span>
+          <span class="text-sm text-white">Só para quem aceitou receber comunicações</span>
+          <span class="block text-xs text-slate-500">
+            Recomendado. Desligar envia para todo visitante — aceitável para uma
+            saudação institucional, arriscado para oferta comercial (LGPD Art. 7º).
+          </span>
+        </span>
+      </label>
+    </div>
+
+    <!-- ── Mensagem ────────────────────────────────────────────────────── -->
+    <div class="bg-slate-900 border border-white/5 rounded-2xl p-5 space-y-3">
+      <label class="block text-sm text-white">Mensagem de boas-vindas</label>
+      <textarea name="mensagem" rows="4"
+                class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-3 text-sm text-slate-100
+                       focus:outline-none focus:border-teal-500/50 transition">{{ mensagem }}</textarea>
+      <div class="flex flex-wrap gap-2">
+        {% for chave, descricao in variaveis.items() %}
+        <button type="button" class="var-btn rounded-lg border border-white/10 px-2.5 py-1 text-xs
+                       text-slate-300 hover:bg-white/10 transition" data-var="{{ chave }}"
+                title="{{ descricao }}">{{ '{' ~ chave ~ '}' }}</button>
+        {% endfor %}
+      </div>
+      <p class="text-xs text-slate-500">Clique para inserir. Prévia abaixo, com dados de exemplo.</p>
+      <div id="previa" class="rounded-xl px-4 py-3 text-sm"
+           style="background:#075E54;color:#e8f5e9;white-space:pre-wrap"></div>
+    </div>
+
+    <!-- ── Provedor ────────────────────────────────────────────────────── -->
+    <div class="bg-slate-900 border border-white/5 rounded-2xl p-5 space-y-4">
+      <label class="block text-sm text-white">Provedor</label>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <label class="prov-card cursor-pointer rounded-xl border p-4 transition"
+               data-prov="whatsgw">
+          <input type="radio" name="whatsapp_provider" value="whatsgw" class="sr-only"
+                 {% if provedor == 'whatsgw' %}checked{% endif %}>
+          <span class="block text-sm font-medium text-white">WhatsGW</span>
+          <span class="block text-xs text-slate-500 mt-1">
+            Gateway brasileiro. Texto livre, sem template aprovado. Mais rápido de começar.
+          </span>
+        </label>
+        <label class="prov-card cursor-pointer rounded-xl border p-4 transition"
+               data-prov="cloud">
+          <input type="radio" name="whatsapp_provider" value="cloud" class="sr-only"
+                 {% if provedor == 'cloud' %}checked{% endif %}>
+          <span class="block text-sm font-medium text-white">WhatsApp Cloud API</span>
+          <span class="block text-xs text-slate-500 mt-1">
+            Oficial da Meta. Exige <strong>template aprovado</strong> para o primeiro contato.
+          </span>
+        </label>
+      </div>
+
+      <!-- WhatsGW -->
+      <div id="campos-whatsgw" class="space-y-3 pt-2 border-t border-white/5">
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">API Key</label>
+          <input name="gw_apikey" type="password" autocomplete="new-password"
+                 placeholder="{% if gw_apikey %}•••••••• (deixe em branco para manter){% else %}cole a API Key{% endif %}"
+                 class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-100
+                        focus:outline-none focus:border-teal-500/50 transition">
+        </div>
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Número remetente (com DDI)</label>
+          <input name="gw_remetente" value="{{ gw_remetente }}" placeholder="5511999998888"
+                 class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-100
+                        focus:outline-none focus:border-teal-500/50 transition">
+        </div>
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">URL da API (opcional)</label>
+          <input name="gw_url" value="{{ gw_url }}" type="url"
+                 placeholder="https://app.whatsgw.com.br/api/WhatsGw/Send"
+                 class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-100
+                        focus:outline-none focus:border-teal-500/50 transition">
+          <p class="text-xs text-slate-500 mt-1">
+            Em branco usa o endereço padrão. Confira o endpoint no painel da sua
+            conta — o teste abaixo confirma se está certo.
+          </p>
+        </div>
+      </div>
+
+      <!-- Cloud API -->
+      <div id="campos-cloud" class="space-y-3 pt-2 border-t border-white/5">
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Token de acesso</label>
+          <input name="cloud_token" type="password" autocomplete="new-password"
+                 placeholder="{% if cloud_token %}•••••••• (deixe em branco para manter){% else %}cole o token{% endif %}"
+                 class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-100
+                        focus:outline-none focus:border-teal-500/50 transition">
+        </div>
+        <div class="grid gap-3 sm:grid-cols-2">
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Phone Number ID</label>
+            <input name="cloud_phone" value="{{ cloud_phone }}" placeholder="123456789012345"
+                   class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-100
+                          focus:outline-none focus:border-teal-500/50 transition">
+          </div>
+          <div>
+            <label class="block text-xs text-slate-400 mb-1">Idioma do template</label>
+            <input name="cloud_idioma" value="{{ cloud_idioma }}" placeholder="pt_BR"
+                   class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-100
+                          focus:outline-none focus:border-teal-500/50 transition">
+          </div>
+        </div>
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Nome do template aprovado</label>
+          <input name="cloud_tpl" value="{{ cloud_tpl }}" placeholder="boas_vindas_wifi"
+                 class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-100
+                        focus:outline-none focus:border-teal-500/50 transition">
+          <p class="text-xs text-slate-500 mt-1">
+            O primeiro contato com um visitante acontece fora da janela de 24 h,
+            e a Meta só aceita template aprovado nesse caso. A mensagem acima
+            entra como parâmetro do corpo do template.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <button type="submit" class="rounded-xl bg-teal-600 hover:bg-teal-500 px-5 py-2.5 text-sm
+                                 font-medium text-white transition">
+      Salvar
+    </button>
+  </form>
+
+  <!-- ── Teste ─────────────────────────────────────────────────────────── -->
+  <div class="bg-slate-900 border border-white/5 rounded-2xl p-5 space-y-3">
+    <h2 class="text-sm font-medium text-white">Enviar teste</h2>
+    <p class="text-xs text-slate-500">
+      Envia a mensagem de verdade, usando a configuração já salva.
+    </p>
+    <div class="flex flex-wrap gap-2">
+      <input id="destino" placeholder="5511999998888"
+             class="flex-1 min-w-[200px] rounded-xl bg-white/5 border border-white/10 px-4 py-2
+                    text-sm text-slate-100 focus:outline-none focus:border-teal-500/50 transition">
+      <button type="button" id="btn-testar"
+              class="rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-300
+                     hover:bg-white/10 transition">Enviar</button>
+    </div>
+    <div id="resultado" class="hidden rounded-xl border px-4 py-3 text-sm"></div>
+  </div>
+</div>
+
+<script>
+const EXEMPLO = { nome: 'Maria Souza', primeiro_nome: 'Maria', loja: 'Loja Centro', rede: 'CC_Guests' };
+const campo = document.querySelector('textarea[name="mensagem"]');
+const previa = document.getElementById('previa');
+
+function atualizarPrevia() {
+  let t = campo.value;
+  for (const [k, v] of Object.entries(EXEMPLO)) t = t.split('{' + k + '}').join(v);
+  previa.textContent = t.trim() || '(mensagem em branco — nada será enviado)';
+}
+campo.addEventListener('input', atualizarPrevia);
+atualizarPrevia();
+
+document.querySelectorAll('.var-btn').forEach(b => {
+  b.addEventListener('click', () => {
+    const marca = '{' + b.dataset.var + '}';
+    const pos = campo.selectionStart ?? campo.value.length;
+    campo.value = campo.value.slice(0, pos) + marca + campo.value.slice(pos);
+    campo.focus();
+    campo.selectionStart = campo.selectionEnd = pos + marca.length;
+    atualizarPrevia();
+  });
+});
+
+// Mostra só os campos do provedor escolhido — a tela inteira de uma vez
+// esconde qual credencial realmente importa.
+function alternarProvedor() {
+  const escolhido = document.querySelector('input[name="whatsapp_provider"]:checked').value;
+  document.getElementById('campos-whatsgw').style.display = escolhido === 'whatsgw' ? '' : 'none';
+  document.getElementById('campos-cloud').style.display   = escolhido === 'cloud'   ? '' : 'none';
+  document.querySelectorAll('.prov-card').forEach(c => {
+    const ativo = c.dataset.prov === escolhido;
+    c.style.borderColor = ativo ? 'rgba(20,184,166,0.5)' : 'rgba(255,255,255,0.1)';
+    c.style.background  = ativo ? 'rgba(20,184,166,0.08)' : 'transparent';
+  });
+}
+document.querySelectorAll('input[name="whatsapp_provider"]').forEach(r => {
+  r.addEventListener('change', alternarProvedor);
+});
+document.querySelectorAll('.prov-card').forEach(c => {
+  c.addEventListener('click', () => { c.querySelector('input').checked = true; alternarProvedor(); });
+});
+alternarProvedor();
+
+document.getElementById('btn-testar').addEventListener('click', async (ev) => {
+  const botao = ev.currentTarget;
+  const caixa = document.getElementById('resultado');
+  const destino = document.getElementById('destino').value.trim();
+  botao.disabled = true; botao.textContent = 'Enviando…';
+  try {
+    const dados = new FormData();
+    dados.append('destino', destino);
+    dados.append('csrf_token', '{{ csrf_token() }}');
+    const r = await fetch('{{ url_for("admin.whatsapp_test") }}', { method: 'POST', body: dados });
+    const d = await r.json();
+    caixa.className = 'rounded-xl border px-4 py-3 text-sm ' + (d.ok
+      ? 'border-teal-500/30 bg-teal-500/10 text-teal-300'
+      : 'border-rose-500/30 bg-rose-500/10 text-rose-300');
+    caixa.textContent = (d.ok ? 'Enviado. ' : 'Falhou. ') + (d.detalhe || d.error || '');
+  } catch (e) {
+    caixa.className = 'rounded-xl border px-4 py-3 text-sm border-rose-500/30 bg-rose-500/10 text-rose-300';
+    caixa.textContent = 'Erro de rede: ' + e.message;
+  } finally {
+    botao.disabled = false; botao.textContent = 'Enviar';
+  }
+});
+</script>
+{% endblock %}

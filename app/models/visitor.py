@@ -67,7 +67,11 @@ class Visitor(db.Model):
             terms_accepted_at=datetime.now(timezone.utc),
             terms_version=terms_version,
             marketing_optin=marketing_optin,
-            visit_count=1,
+            # Nasce zerado: quem conta a visita e o touch(), chamado quando a
+            # autorizacao no controlador da certo. Comecar em 1 fazia a
+            # primeira visita valer 2 (cadastro + touch) e, pior, contava
+            # visita para quem se cadastrou mas nao chegou a ser liberado.
+            visit_count=0,
             last_seen=datetime.now(timezone.utc),
         )
         return v

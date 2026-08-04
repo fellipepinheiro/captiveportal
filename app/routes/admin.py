@@ -110,6 +110,14 @@ def serve_media(filename):
     # Verifica primeiro na pasta de avatars
     avatar_file = AVATAR_FOLDER / safe
     if avatar_file.exists():
+        # Avatar e foto de funcionario, so faz sentido dentro do painel.
+        # A rota inteira precisa continuar publica por causa do logo, que o
+        # visitante ve antes de ser autorizado — mas sem esta checagem os
+        # nomes seguem o padrao avatar_<id>.jpg e qualquer um da rede
+        # enumeraria as fotos da equipe.
+        if not current_user.is_authenticated:
+            from flask import abort
+            abort(404)
         return send_from_directory(AVATAR_FOLDER.resolve(), safe)
 
     # Depois na pasta raíz de uploads (logo, favicon etc.)
@@ -143,6 +151,24 @@ def login_post():
         db.session.commit()
         login_user(user, remember=False)
         return redirect(url_for("admin.dashboard"))
+
+    # Tentativa frustrada vai para a auditoria: sem isso um ataque de forca
+    # bruta contra o painel nao deixa rastro nenhum, e o rate limit sozinho
+    # so atrasa — nao avisa ninguem. O usuario tentado entra no registro; a
+    # senha, nunca.
+    try:
+        db.session.add(AuditLog(
+            event_type="ADMIN_LOGIN_FALHOU",
+            status="FAILURE",
+            payload=f"usuario tentado: {username[:60]!r}" if username else "usuario em branco",
+            ip_address=request.remote_addr,
+            actor="anonimo",
+        ))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.warning("falha ao registrar tentativa de login", exc_info=True)
+
     flash("Credenciais inválidas.", "error")
     return redirect(url_for("admin.login"))
 
@@ -424,7 +450,11 @@ def visitor_delete(vid: int):
         db.session.add(AuditLog(
             event_type="VISITOR_DELETED",
             status="SUCCESS",
-            payload=f"visitante '{nome}' (id={vid}) excluido pelo painel",
+            # Sem o nome de proposito: guardar quem foi excluido mantem o
+            # dado pessoal vivo justamente no registro da exclusao, o que
+            # esvazia o direito exercido (LGPD Art. 18, V). O id basta para
+            # a trilha de auditoria.
+            payload=f"cadastro de visitante id={vid} excluido pelo painel",
             actor=current_user.username,
             ip_address=request.remote_addr,
         ))
@@ -610,6 +640,187 @@ def integrations_save():
     db.session.commit()
     flash("Configurações de integração salvas.", "success")
     return redirect(url_for("admin.integrations"))
+
+
+# ─── WhatsApp ────────────────────────────────────────────────────────────────
+
+_WHATSAPP_PADRAO = (
+    "Olá {primeiro_nome}! 👋 Que bom ter você aqui na {loja}. "
+    "Seu acesso ao Wi-Fi está liberado. Seja bem-vindo(a)!"
+)
+
+
+@bp.get("/whatsapp")
+@login_required
+def whatsapp():
+    from app.services import whatsapp_service as ws
+    return render_template(
+        "admin/whatsapp.html",
+        habilitado   = SiteConfig.get("whatsapp_enabled", "false") == "true",
+        provedor     = SiteConfig.get("whatsapp_provider", "whatsgw"),
+        gatilho_pv   = SiteConfig.get("whatsapp_gatilho_primeira_visita", "true") == "true",
+        somente_optin= SiteConfig.get("whatsapp_somente_optin", "true") == "true",
+        mensagem     = SiteConfig.get("whatsapp_mensagem_boas_vindas", _WHATSAPP_PADRAO),
+        gw_apikey    = SiteConfig.get("whatsapp_whatsgw_apikey", ""),
+        gw_remetente = SiteConfig.get("whatsapp_whatsgw_remetente", ""),
+        gw_url       = SiteConfig.get("whatsapp_whatsgw_url", ""),
+        cloud_token  = SiteConfig.get("whatsapp_cloud_token", ""),
+        cloud_phone  = SiteConfig.get("whatsapp_cloud_phone_id", ""),
+        cloud_tpl    = SiteConfig.get("whatsapp_cloud_template", ""),
+        cloud_idioma = SiteConfig.get("whatsapp_cloud_idioma", "pt_BR"),
+        variaveis    = ws.VARIAVEIS,
+    )
+
+
+@bp.post("/whatsapp/salvar")
+@login_required
+def whatsapp_save():
+    provedor = request.form.get("whatsapp_provider", "whatsgw")
+    if provedor not in ("whatsgw", "cloud"):
+        flash("Provedor inválido.", "error")
+        return redirect(url_for("admin.whatsapp"))
+
+    SiteConfig.set("whatsapp_provider", provedor)
+    SiteConfig.set("whatsapp_enabled", "true" if request.form.get("whatsapp_enabled") else "false")
+    SiteConfig.set("whatsapp_gatilho_primeira_visita",
+                   "true" if request.form.get("gatilho_primeira_visita") else "false")
+    SiteConfig.set("whatsapp_somente_optin",
+                   "true" if request.form.get("somente_optin") else "false")
+    SiteConfig.set("whatsapp_mensagem_boas_vindas",
+                   request.form.get("mensagem", "").strip()[:1000])
+
+    SiteConfig.set("whatsapp_whatsgw_remetente", request.form.get("gw_remetente", "").strip()[:20])
+    SiteConfig.set("whatsapp_whatsgw_url", request.form.get("gw_url", "").strip()[:255])
+    SiteConfig.set("whatsapp_cloud_phone_id", request.form.get("cloud_phone", "").strip()[:60])
+    SiteConfig.set("whatsapp_cloud_template", request.form.get("cloud_tpl", "").strip()[:80])
+    SiteConfig.set("whatsapp_cloud_idioma", request.form.get("cloud_idioma", "").strip()[:10] or "pt_BR")
+
+    # Segredos so sao sobrescritos quando o campo vem preenchido — o
+    # formulario chega em branco para nao exibir a credencial na tela.
+    if request.form.get("gw_apikey", "").strip():
+        SiteConfig.set("whatsapp_whatsgw_apikey", request.form["gw_apikey"].strip())
+    if request.form.get("cloud_token", "").strip():
+        SiteConfig.set("whatsapp_cloud_token", request.form["cloud_token"].strip())
+
+    db.session.commit()
+    flash("Configurações do WhatsApp salvas.", "success")
+    return redirect(url_for("admin.whatsapp"))
+
+
+@bp.post("/whatsapp/testar")
+@login_required
+@limiter.limit("5 per minute")
+def whatsapp_test():
+    """Envia uma mensagem real para o número informado."""
+    from app.services import whatsapp_service as ws
+
+    destino = request.form.get("destino", "").strip()
+    if not destino:
+        return jsonify({"ok": False, "error": "Informe o número de destino."}), 400
+
+    texto = ws.montar_mensagem(
+        SiteConfig.get("whatsapp_mensagem_boas_vindas", _WHATSAPP_PADRAO),
+        {"nome": current_user.username, "loja": "Loja de teste", "rede": "Wi-Fi"},
+    )
+    ok, detalhe = ws.enviar(destino, texto, primeiro_contato=True)
+    return jsonify({"ok": ok, "detalhe": detalhe, "mensagem": texto}), (200 if ok else 502)
+
+
+# ─── Diagnóstico: modo simulação e estado dos controladores ──────────────────
+
+def _diagnostico_lojas() -> list[dict]:
+    """Estado real de cada loja: simulação ligada? por quê? responde?"""
+    from app.services.unifi_api import get_unifi_for_store, UnifiAPIError
+
+    linhas = []
+    for store in Store.query.order_by(Store.name).all():
+        item = {"id": store.id, "nome": store.name, "slug": store.slug,
+                "ativa": store.is_active, "base_url": store.unifi_base_url or "",
+                "site_id": store.unifi_site_id or "default",
+                "tem_api_key": bool(store.unifi_api_key)}
+        try:
+            unifi = get_unifi_for_store(store)
+        except Exception as exc:
+            item.update(simulacao=True, motivo=f"erro ao montar o cliente: {exc}",
+                        conectado=False, detalhe=str(exc))
+            linhas.append(item)
+            continue
+
+        item["simulacao"] = unifi.mock
+        if not unifi.mock:
+            item["motivo"] = "desligada — as chamadas vão para o controlador"
+        elif unifi.mock_involuntario:
+            item["motivo"] = "loja sem endereço do controlador — ninguém é liberado de verdade"
+        elif not unifi.configurado:
+            item["motivo"] = "sem endereço de controlador configurado"
+        else:
+            item["motivo"] = "ligada por UNIFI_MOCK ou FLASK_ENV=development"
+
+        try:
+            sites = unifi.get_sites()
+            item["conectado"] = True
+            item["detalhe"] = (f"{len(sites)} site(s): "
+                               + ", ".join(str(s.get('name')) for s in sites[:3]))
+        except UnifiAPIError as exc:
+            item["conectado"] = False
+            item["detalhe"] = str(exc)
+        except Exception as exc:
+            item["conectado"] = False
+            item["detalhe"] = f"{type(exc).__name__}: {exc}"
+        linhas.append(item)
+    return linhas
+
+
+def _estado_simulacao() -> dict:
+    """Resumo usado pelo selo do topo e pela tela de diagnóstico."""
+    lojas = _diagnostico_lojas()
+    ativas = [l for l in lojas if l["ativa"]]
+    return {
+        "env_unifi_mock": os.environ.get("UNIFI_MOCK", "(não definida)"),
+        "flask_env": os.environ.get("FLASK_ENV", "production"),
+        "lojas": lojas,
+        "em_simulacao": [l["slug"] for l in ativas if l["simulacao"]],
+        "involuntarias": [l["slug"] for l in ativas if l.get("motivo", "").startswith("loja sem")],
+        "total_ativas": len(ativas),
+    }
+
+
+@bp.app_context_processor
+def _injeta_estado_simulacao():
+    """Deixa o selo de simulação disponível em toda tela do painel.
+
+    De propósito não chama o controlador: isso roda a cada página, e uma
+    requisição de rede por render deixaria o painel lento e ainda o
+    quebraria quando o UniFi estivesse fora do ar. Aqui só se olha a
+    configuração — a verificação de verdade fica no /admin/diagnostico.
+    """
+    if not request.path.startswith("/admin") or not current_user.is_authenticated:
+        return {}
+    try:
+        from app.services.unifi_api import get_unifi_for_store
+        simulando, sem_controlador = [], []
+        for store in Store.query.filter_by(is_active=True).all():
+            unifi = get_unifi_for_store(store)
+            if unifi.mock:
+                simulando.append(store.slug)
+            if unifi.mock_involuntario:
+                sem_controlador.append(store.slug)
+        return {"simulacao_slugs": simulando, "simulacao_involuntaria": sem_controlador}
+    except Exception:
+        return {}
+
+
+@bp.get("/diagnostico")
+@login_required
+def diagnostics():
+    return render_template("admin/diagnostics.html", estado=_estado_simulacao())
+
+
+@bp.get("/diagnostico.json")
+@login_required
+@limiter.limit("30 per minute")
+def diagnostics_json():
+    return jsonify(_estado_simulacao())
 
 
 @bp.post("/integracoes/testar")
