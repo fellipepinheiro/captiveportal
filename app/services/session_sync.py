@@ -47,10 +47,17 @@ def _clientes_ativos(store: Store) -> set[str] | None:
         return None
 
     ativos = set()
+    ips = {}
     for c in clientes:
         mac = (c.get('macAddress') or '').lower()
         if not mac:
             continue
+        # O endereco que o controlador ve e o real na VLAN de visitantes. O
+        # que chega no Flask e o do ultimo salto: com o portal publicado por
+        # Docker, a NAT troca a origem e todo mundo vira o gateway.
+        ip = (c.get('ipAddress') or '').strip()
+        if ip:
+            ips[mac] = ip[:45]
         acesso = c.get('access') or {}
         # Presenca na lista = conectado ao wifi.
         # authorized=False = ainda conectado, mas sem acesso liberado.
@@ -59,7 +66,7 @@ def _clientes_ativos(store: Store) -> set[str] | None:
 
     # Trafego vem da API classica e e complementar: se falhar, segue sem ele.
     trafego = unifi.get_client_traffic(unifi.site_name_from_id(site_id))
-    return ativos, trafego
+    return ativos, trafego, ips
 
 
 def sync_store(store: Store, incluir_sem_loja: bool = False) -> tuple[int, str]:
@@ -88,7 +95,7 @@ def sync_store(store: Store, incluir_sem_loja: bool = False) -> tuple[int, str]:
     resultado = _clientes_ativos(store)
     if resultado is None:
         return 0, 'controlador indisponivel (ou modo mock) — nada encerrado'
-    ativos, trafego = resultado
+    ativos, trafego, ips = resultado
 
     agora = datetime.now(timezone.utc)
     limite = store.session_minutes or current_app.config.get('UNIFI_SESSION_MINUTES', 480)
@@ -102,6 +109,10 @@ def sync_store(store: Store, incluir_sem_loja: bool = False) -> tuple[int, str]:
         if uso:
             ps.bytes_down = uso['rx']
             ps.bytes_up   = uso['tx']
+
+        ip_real = ips.get(mac)
+        if ip_real and ip_real != ps.client_ip:
+            ps.client_ip = ip_real
 
         if mac in ativos:
             continue

@@ -53,6 +53,17 @@ def authorize_visitor(portal_session: PortalSession, visitor: Visitor, store: St
             )
             return False
         client = unifi.find_client_by_mac(site_id, portal_session.client_mac)
+        if client:
+            # O IP visto pelo Flask e o do ultimo salto ate o container: com o
+            # portal publicado por Docker, a NAT troca a origem e todo mundo
+            # aparece como o gateway (192.168.65.1 no Docker Desktop). O
+            # controlador sabe o endereco de verdade na VLAN de visitantes,
+            # e ja estamos consultando este cliente — entao vem dele.
+            ip_real = (client.get('ipAddress') or '').strip()
+            if ip_real and ip_real != portal_session.client_ip:
+                logger.info('[UniFi] IP do cliente %s: %s (era %s)',
+                            portal_session.client_mac, ip_real, portal_session.client_ip)
+                portal_session.client_ip = ip_real[:45]
         if not client or not client.get('id'):
             logger.warning(
                 '[UniFi] cliente nao encontrado no controlador (site=%s mac=%s loja=%s)',

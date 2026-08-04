@@ -65,6 +65,21 @@ Há um interruptor **"só para quem aceitou receber comunicações"**, ligado po
 padrão: saudação institucional é uma coisa, oferta comercial é outra (LGPD
 Art. 7º).
 
+### IP real do visitante
+O endereço que o Flask enxerga é o do último salto até o container. Com o
+portal publicado por Docker, a NAT troca a origem e **todo visitante aparece
+como o gateway** — `192.168.65.1` no Docker Desktop. Atrás do nginx o
+`X-Forwarded-For` resolve (já configurado, via `ProxyFix`), mas publicando a
+porta direto não há proxy nenhum.
+
+Por isso o IP vem do **controlador**, que conhece o endereço real na VLAN de
+visitantes: é gravado na autorização (o cliente já é consultado ali) e
+mantido pelo serviço `session_sync`, que também corrige sessões antigas.
+
+`TRUST_PROXY_HOPS` controla a leitura do `X-Forwarded-For`: `1` (padrão) é o
+correto atrás do nginx; use `0` quando o portal for publicado direto, senão
+qualquer cliente pode mandar o header e escolher que IP fica registrado.
+
 ### Diagnóstico (`/admin/diagnostico`)
 Mostra se o portal está falando com os controladores **de verdade** ou apenas
 simulando, loja por loja: motivo da simulação, se o controlador responde, URL,

@@ -10,8 +10,19 @@ def create_app(config_name=None):
     from app.config import get_config
     app.config.from_object(get_config(config_name))
 
-    # ProxyFix: extrai X-Real-IP / X-Forwarded-For enviados pelo nginx-proxy.
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+    # ProxyFix: extrai X-Real-IP / X-Forwarded-For enviados pelo nginx.
+    #
+    # So faz sentido atras de um proxy de confianca. Com o portal publicado
+    # direto (o override local faz isso na porta 80), qualquer um pode mandar
+    # X-Forwarded-For e escolher que IP aparece no registro — inclusive nos
+    # logs de conexao que o Marco Civil manda guardar. TRUST_PROXY_HOPS=0
+    # desliga; o padrao 1 mantem o comportamento de producao, onde o nginx
+    # sobrescreve o header.
+    import os
+    saltos = int(os.getenv("TRUST_PROXY_HOPS", "1"))
+    if saltos > 0:
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=saltos, x_proto=saltos,
+                                x_host=saltos, x_prefix=saltos)
 
     # Inicializa extensoes
     db.init_app(app)
