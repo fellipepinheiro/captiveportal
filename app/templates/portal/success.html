@@ -39,7 +39,8 @@
     <p class="mt-1 text-sm text-slate-400">Você está conectado à internet.</p>
   </div>
 
-  <!-- Barra de progresso -->
+  {% if not navegador_cativo %}
+  <!-- Barra de progresso: só quando o redirecionamento realmente acontece -->
   <div class="w-full">
     <div class="mb-2 flex items-center justify-between text-xs text-slate-500">
       <span>Redirecionando em breve</span>
@@ -50,19 +51,28 @@
            style="background:{{ portal_btn_color | default('#0d9488') }}; width:0%"></div>
     </div>
   </div>
+  {% endif %}
 
-  <!-- Botão manual -->
+  <!-- Continuar -->
   <a href="{{ redirect_url or 'http://google.com' }}"
+     {% if navegador_cativo %}target="_blank" rel="noopener"{% endif %}
      class="btn-primary text-center no-underline inline-block"
      style="text-decoration:none">
-    Acessar a internet agora
+    {% if navegador_cativo %}Continuar{% else %}Acessar a internet agora{% endif %}
   </a>
 
+  {% if navegador_cativo %}
+  <p class="text-xs leading-relaxed text-slate-500">
+    Toque em <strong class="text-slate-400">Continuar</strong> para abrir no seu navegador.
+    Esta janela de conexão fecha sozinha.
+  </p>
+  {% else %}
   <p class="text-xs text-slate-600">
     Se não redirecionar,
     <a href="{{ redirect_url or 'http://google.com' }}"
        class="text-slate-400 underline underline-offset-2">clique aqui</a>.
   </p>
+  {% endif %}
 </div>
 
 <script>
@@ -90,6 +100,8 @@
     );
   })();
 
+  {% if not navegador_cativo %}
+  // Só redireciona fora da janela cativa: ali a navegação é descartada.
   const totalSeconds = 5;
   let elapsed = 0;
   const bar = document.getElementById('progress-bar');
@@ -102,5 +114,6 @@
     countEl.textContent = totalSeconds - elapsed;
     if (elapsed >= totalSeconds) { clearInterval(iv); window.location.href = redirectUrl; }
   }, 1000);
+  {% endif %}
 </script>
 {% endblock %}
