@@ -103,6 +103,11 @@ def authorize_visitor(portal_session: PortalSession, visitor: Visitor, store: St
                 fire_first_visit(portal_session, visitor, store)
             except Exception:
                 logger.warning('[primeira-visita] falha ao disparar webhook', exc_info=True)
+            try:
+                from app.services import whatsapp_service
+                whatsapp_service.notificar_primeira_visita(visitor, portal_session, store)
+            except Exception:
+                logger.warning('[primeira-visita] falha ao enviar WhatsApp', exc_info=True)
 
         # A autorizacao no controlador ja foi feita acima, antes de marcar a
         # sessao como autorizada. Nao ha uma segunda chamada aqui: a versao

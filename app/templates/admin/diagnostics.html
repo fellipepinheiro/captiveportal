@@ -1,0 +1,135 @@
+{% extends 'admin/base.html' %}
+{% block title %}Diagnóstico{% endblock %}
+
+{% block content %}
+<div class="space-y-6 max-w-4xl">
+
+  <div class="flex flex-wrap items-start justify-between gap-3">
+    <div>
+      <h1 class="text-xl font-semibold text-white">Diagnóstico</h1>
+      <p class="text-sm text-slate-400 mt-1">
+        Se o portal está falando com os controladores de verdade ou apenas simulando.
+      </p>
+    </div>
+    <button type="button" id="btn-recarregar"
+            class="shrink-0 rounded-xl border border-white/10 px-3 py-1.5 text-xs text-slate-300
+                   hover:bg-white/10 transition">Verificar agora</button>
+  </div>
+
+  <!-- Resumo -->
+  <div id="resumo"></div>
+
+  <!-- Ambiente -->
+  <div class="bg-slate-900 border border-white/5 rounded-2xl p-5">
+    <h2 class="text-sm font-medium text-white mb-3">Ambiente</h2>
+    <dl class="grid gap-3 sm:grid-cols-2 text-sm">
+      <div>
+        <dt class="text-xs text-slate-500">UNIFI_MOCK</dt>
+        <dd class="text-slate-200 font-mono" id="env-mock">—</dd>
+      </div>
+      <div>
+        <dt class="text-xs text-slate-500">FLASK_ENV</dt>
+        <dd class="text-slate-200 font-mono" id="env-flask">—</dd>
+      </div>
+    </dl>
+    <p class="text-xs text-slate-500 mt-3">
+      Com <code class="text-slate-400">FLASK_ENV=development</code> a simulação liga
+      sozinha, a menos que <code class="text-slate-400">UNIFI_MOCK=false</code> diga o contrário.
+    </p>
+  </div>
+
+  <!-- Lojas -->
+  <div>
+    <h2 class="text-sm font-medium text-white mb-3">Lojas</h2>
+    <div id="lojas" class="space-y-3">
+      <div class="text-xs text-slate-500">Carregando…</div>
+    </div>
+  </div>
+</div>
+
+<script>
+const DADOS_INICIAIS = {{ estado | tojson }};
+
+function selo(texto, cor) {
+  const cores = {
+    verde: 'border-teal-500/30 bg-teal-500/10 text-teal-300',
+    vermelho: 'border-rose-500/30 bg-rose-500/10 text-rose-300',
+    amarelo: 'border-amber-500/30 bg-amber-500/10 text-amber-300',
+    cinza: 'border-white/10 bg-white/5 text-slate-400',
+  };
+  return `<span class="inline-block rounded-lg border px-2 py-0.5 text-xs ${cores[cor]}">${texto}</span>`;
+}
+
+function desenhar(d) {
+  document.getElementById('env-mock').textContent = d.env_unifi_mock;
+  document.getElementById('env-flask').textContent = d.flask_env;
+
+  // O aviso mais forte é a simulação involuntária: ali o portal diz
+  // "acesso liberado" e o controlador nunca fica sabendo.
+  const resumo = document.getElementById('resumo');
+  if (d.involuntarias.length) {
+    resumo.innerHTML = `<div class="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-5 py-4">
+      <p class="text-sm font-medium text-rose-300">Simulação involuntária em ${d.involuntarias.length} loja(s)</p>
+      <p class="text-xs text-rose-200/80 mt-1">
+        ${d.involuntarias.join(', ')} — sem endereço de controlador. O visitante vê
+        "acesso liberado", mas o UniFi nunca é avisado e o aparelho segue sem internet.
+      </p></div>`;
+  } else if (d.em_simulacao.length) {
+    resumo.innerHTML = `<div class="rounded-2xl border border-amber-500/30 bg-amber-500/10 px-5 py-4">
+      <p class="text-sm font-medium text-amber-300">Modo simulação ativo</p>
+      <p class="text-xs text-amber-200/80 mt-1">
+        ${d.em_simulacao.join(', ')} — nenhuma chamada real ao controlador. Bom para
+        desenvolver, mas ninguém é liberado de verdade.
+      </p></div>`;
+  } else {
+    resumo.innerHTML = `<div class="rounded-2xl border border-teal-500/30 bg-teal-500/10 px-5 py-4">
+      <p class="text-sm font-medium text-teal-300">Operação normal</p>
+      <p class="text-xs text-teal-200/80 mt-1">
+        ${d.total_ativas} loja(s) ativa(s), todas falando com o controlador de verdade.
+      </p></div>`;
+  }
+
+  document.getElementById('lojas').innerHTML = d.lojas.map(l => `
+    <div class="bg-slate-900 border border-white/5 rounded-2xl p-5">
+      <div class="flex flex-wrap items-center gap-2 mb-2">
+        <span class="text-sm font-medium text-white">${l.nome}</span>
+        <span class="text-xs text-slate-500 font-mono">${l.slug}</span>
+        ${l.ativa ? '' : selo('inativa', 'cinza')}
+        ${l.simulacao ? selo('simulação', 'amarelo') : selo('real', 'verde')}
+        ${l.conectado ? selo('controlador responde', 'verde') : selo('sem resposta', 'vermelho')}
+      </div>
+      <p class="text-xs text-slate-400">${l.motivo}</p>
+      <dl class="mt-3 grid gap-2 sm:grid-cols-2 text-xs">
+        <div><dt class="text-slate-500">URL</dt>
+             <dd class="text-slate-300 font-mono break-all">${l.base_url || '(vazia)'}</dd></div>
+        <div><dt class="text-slate-500">Site ID</dt>
+             <dd class="text-slate-300 font-mono break-all">${l.site_id}</dd></div>
+        <div><dt class="text-slate-500">API Key</dt>
+             <dd class="text-slate-300">${l.tem_api_key ? 'configurada' : 'ausente'}</dd></div>
+        <div><dt class="text-slate-500">Resposta</dt>
+             <dd class="text-slate-300 break-all">${l.detalhe || '—'}</dd></div>
+      </dl>
+      <a href="/admin/lojas/${l.id}/editar"
+         class="inline-block mt-3 text-xs text-teal-400 hover:underline">Ajustar esta loja →</a>
+    </div>`).join('');
+}
+
+async function recarregar() {
+  const botao = document.getElementById('btn-recarregar');
+  botao.disabled = true; botao.textContent = 'Verificando…';
+  try {
+    const r = await fetch('{{ url_for("admin.diagnostics_json") }}');
+    desenhar(await r.json());
+  } catch (e) {
+    document.getElementById('resumo').innerHTML =
+      `<div class="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-5 py-4 text-sm text-rose-300">
+         Não foi possível verificar: ${e.message}</div>`;
+  } finally {
+    botao.disabled = false; botao.textContent = 'Verificar agora';
+  }
+}
+
+document.getElementById('btn-recarregar').addEventListener('click', recarregar);
+desenhar(DADOS_INICIAIS);
+</script>
+{% endblock %}

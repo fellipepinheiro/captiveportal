@@ -232,7 +232,9 @@
         ('admin.reports',             'Relatórios',   'M18 20V10M12 20V4M6 20v-6'),
         ('admin.form_fields',         'Formulário',   'M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2z'),
         ('admin.settings_appearance', 'Aparência',    'M12 20h9M16.5 3.5a2.121 2.121 0 013 3L7 19l-4 1 1-4L16.5 3.5z'),
+        ('admin.whatsapp',            'WhatsApp',     'M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z'),
         ('admin.integrations',        'Integrações',  'M10 13a5 5 0 007.54.54l3-3a5 5 0 00-7.07-7.07l-1.72 1.71M14 11a5 5 0 00-7.54-.54l-3 3a5 5 0 007.07 7.07l1.71-1.71'),
+        ('admin.diagnostics',         'Diagnóstico',  'M22 12h-4l-3 9L9 3l-3 9H2'),
         ('admin.audit',               'Auditoria',    'M9 12h6m-6 4h6m2 5H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5.586a1 1 0 0 1 .707.293l5.414 5.414a1 1 0 0 1 .293.707V19a2 2 0 0 1-2 2z'),
         ('admin.users',               'Usuários',     'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z'),
       ] %}
@@ -338,6 +340,36 @@
 
   <!-- ════ MAIN ════ -->
   <main id="main-wrap" style="padding:1.5rem;">
+    {# Selo permanente quando o portal nao esta falando com o controlador de
+       verdade. Sem ele, uma configuracao quebrada parece funcionamento
+       normal: o visitante ve "acesso liberado" e segue sem internet. #}
+    {% if simulacao_slugs %}
+    <a href="{{ url_for('admin.diagnostics') }}"
+       style="display:flex;align-items:center;gap:10px;margin-bottom:1rem;
+              border-radius:12px;padding:12px 16px;font-size:0.875rem;text-decoration:none;
+              {% if simulacao_involuntaria %}
+                background:rgba(244,63,94,0.1);border:1px solid rgba(244,63,94,0.25);color:#fda4af;
+              {% else %}
+                background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.25);color:#fcd34d;
+              {% endif %}">
+      <svg style="width:16px;height:16px;flex-shrink:0" fill="none" stroke="currentColor"
+           stroke-width="2" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round"
+              d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+      </svg>
+      <span>
+        {% if simulacao_involuntaria %}
+          <strong>Sem controlador configurado</strong> em
+          {{ simulacao_involuntaria | join(', ') }} — ninguém é liberado de verdade.
+        {% else %}
+          <strong>Modo simulação</strong> em {{ simulacao_slugs | join(', ') }} —
+          nenhuma chamada real ao UniFi.
+        {% endif %}
+        <span style="opacity:0.8">Ver diagnóstico →</span>
+      </span>
+    </a>
+    {% endif %}
+
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
         <div style="margin-bottom:1rem">

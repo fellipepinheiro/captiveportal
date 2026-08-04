@@ -49,6 +49,33 @@ Portal de autenticação de visitantes para redes Wi-Fi corporativas, integrado 
 - **Integrações** — Webhook com HMAC-SHA256 e botão de teste
   (as credenciais do UniFi ficam em **Lojas**, por controlador)
 
+### WhatsApp (`/admin/whatsapp`)
+Tela para cadastrar o provedor e a mensagem de boas-vindas, sem mexer em
+webhook. Dois provedores:
+
+- **WhatsGW** — gateway brasileiro, texto livre, mais rápido de começar
+- **WhatsApp Cloud API** (Meta) — oficial; o primeiro contato acontece fora da
+  janela de 24 h, então **exige template aprovado**, e a tela pede o nome dele
+
+Editor com variáveis clicáveis (`{primeiro_nome}`, `{loja}`, `{rede}`), prévia
+ao vivo no estilo da conversa e botão que **envia um teste real** para o número
+que você digitar. A chave fica guardada no banco e nunca é reexibida na tela.
+
+Há um interruptor **"só para quem aceitou receber comunicações"**, ligado por
+padrão: saudação institucional é uma coisa, oferta comercial é outra (LGPD
+Art. 7º).
+
+### Diagnóstico (`/admin/diagnostico`)
+Mostra se o portal está falando com os controladores **de verdade** ou apenas
+simulando, loja por loja: motivo da simulação, se o controlador responde, URL,
+Site ID e se há API Key. Tem botão para verificar na hora.
+
+Quando alguma loja ativa está em simulação, um **selo aparece no topo de toda
+tela do painel** — vermelho quando é involuntária (loja sem endereço de
+controlador, caso em que o visitante vê "acesso liberado" e segue sem
+internet) e amarelo quando foi ligada de propósito. O selo consulta só a
+configuração, sem chamar a rede, para não deixar o painel lento.
+
 ### Gatilho de primeira visita
 Quando alguém entra na rede pela **primeira vez**, o sistema registra o evento
 `PRIMEIRA_VISITA` na auditoria e dispara um webhook próprio (`first_visit`),
