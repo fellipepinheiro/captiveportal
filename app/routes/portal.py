@@ -344,8 +344,12 @@ def register_submit():
     visitor = busca()
     created = False
     if visitor is None:
+        # visit_count nasce zerado: quem conta a visita e o touch(), chamado
+        # quando a autorizacao no controlador da certo. Comecar em 1 fazia a
+        # primeira visita valer 2 e contava visita para quem se cadastrou mas
+        # nao chegou a ser liberado.
         visitor = Visitor(terms_version=terms_version, marketing_optin=marketing_optin,
-                          visit_count=1)
+                          visit_count=0)
         # Os campos da identificacao e do cadastro sao gravados pela mesma
         # regra: coluna propria quando existe, extra_data quando nao.
         form_service.aplicar(visitor, dados_login, "login")

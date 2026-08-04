@@ -49,6 +49,22 @@ Portal de autenticação de visitantes para redes Wi-Fi corporativas, integrado 
 - **Integrações** — Webhook com HMAC-SHA256 e botão de teste
   (as credenciais do UniFi ficam em **Lojas**, por controlador)
 
+### Gatilho de primeira visita
+Quando alguém entra na rede pela **primeira vez**, o sistema registra o evento
+`PRIMEIRA_VISITA` na auditoria e dispara um webhook próprio (`first_visit`),
+separado do `guest_authorized`. É a base para acolher quem chega: no varejo,
+a primeira oferta; na igreja, o aviso de visitante novo para quem faz
+integração.
+
+O payload leva `visitor_mobile` — o canal, tipicamente WhatsApp — e
+`marketing_optin`, que diz se houve consentimento para comunicação
+promocional. **Quem recebe precisa respeitar esse campo:** mensagem de
+boas-vindas é uma coisa, oferta é outra.
+
+A detecção usa o histórico de sessões autorizadas, não o contador
+`visit_count` — o contador serve para relatório, mas não é confiável como
+gatilho: ele avança em `touch()` e antes disso já vinha inflado pelo cadastro.
+
 ### Integração UniFi
 - Autorização via API REST de integração, autenticando por header `X-API-KEY`
 - Credenciais **por loja**: cada UDM Pro tem URL, API Key, Site ID e duração próprios
