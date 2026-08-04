@@ -1028,6 +1028,72 @@ def store_disconnect(sid: int):
     return jsonify({"ok": True, "mensagem": msg, "sessoes_encerradas": encerradas})
 
 
+@bp.post("/lojas/<int:sid>/derrubar-todos")
+@login_required
+@limiter.limit("6 per minute")
+def store_disconnect_all(sid: int):
+    """Derruba de uma vez todos os visitantes autorizados desta loja.
+
+    Existe sobretudo para teste: o UniFi nao manda ao portal quem ja tem
+    autorizacao valida, e ela dura horas, entao sem derrubar nao da para
+    rever a tela de login. Esquecer a rede no aparelho nao adianta — o
+    celular costuma manter o mesmo MAC privado por SSID e reencontra a
+    propria autorizacao.
+    """
+    store = Store.query.get_or_404(sid)
+    site_id = store.unifi_site_id or "default"
+
+    try:
+        unifi = get_unifi_for_store(store)
+        if unifi.mock_involuntario:
+            return jsonify({"ok": False, "error": "Loja sem endereço do controlador."}), 400
+        clientes = unifi.list_clients(site_id)
+    except UnifiAPIError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 502
+
+    # O tipo GUEST sozinho nao basta: o dispositivo mantem esse tipo depois
+    # de revogado. O que indica acesso liberado e access.authorized.
+    autorizados = [c for c in clientes
+                   if (c.get("access") or {}).get("authorized") is True]
+    if not autorizados:
+        return jsonify({"ok": True, "derrubados": 0,
+                        "mensagem": "Ninguém estava com acesso liberado."})
+
+    derrubados, falhas, macs = 0, [], []
+    for c in autorizados:
+        mac = (c.get("macAddress") or "").lower()
+        try:
+            unifi.revoke_guest(site_id, c["id"])
+            derrubados += 1
+            macs.append(mac)
+        except UnifiAPIError as exc:
+            # Ja estar sem autorizacao e o objetivo cumprido, nao um erro.
+            if exc.code == "api.client.no-active-guest-authorization":
+                macs.append(mac)
+                continue
+            falhas.append(f"{mac}: {exc}")
+
+    encerradas = 0
+    if macs:
+        for ps in (PortalSession.query
+                   .filter(func.lower(PortalSession.client_mac).in_(macs))
+                   .filter(PortalSession.authorized.is_(True))
+                   .filter(PortalSession.expired_at.is_(None)).all()):
+            ps.close(max_minutes=store.session_minutes or
+                     current_app.config.get("UNIFI_SESSION_MINUTES", 480))
+            encerradas += 1
+        if encerradas:
+            db.session.commit()
+
+    mensagem = f"{derrubados} conexão(ões) derrubada(s)."
+    if falhas:
+        mensagem += f" {len(falhas)} falhou(aram)."
+    return jsonify({"ok": not falhas, "derrubados": derrubados,
+                    "sessoes_encerradas": encerradas,
+                    "error": "; ".join(falhas) if falhas else None,
+                    "mensagem": mensagem})
+
+
 # ─── Campos do formulário ─────────────────────────────────────────────────────
 
 @bp.get("/formulario")
