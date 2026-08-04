@@ -15,7 +15,7 @@ from sqlalchemy import or_, func
 from werkzeug.utils import secure_filename
 
 from app.extensions import db, limiter, csrf
-from app.models import Visitor, PortalSession, AdminUser, Store, AuditLog
+from app.models import Visitor, PortalSession, AdminUser, Store, AuditLog, FormField
 from app.models.site_config import SiteConfig
 from app.services.unifi_api import get_unifi_for_store, UnifiAPIError
 from app.services.datetime_fmt import fmt_datetime, get_tz
@@ -987,6 +987,135 @@ def store_disconnect(sid: int):
         db.session.commit()
 
     return jsonify({"ok": True, "mensagem": msg, "sessoes_encerradas": encerradas})
+
+
+# ─── Campos do formulário ─────────────────────────────────────────────────────
+
+@bp.get("/formulario")
+@login_required
+def form_fields():
+    from app.models.form_field import CAMPOS_CONHECIDOS, CHAVES_POSSIVEIS, TIPOS
+    from app.services import form_service
+
+    return render_template(
+        "admin/form_fields.html",
+        login=form_service.campos("login"),
+        signup=form_service.campos("signup"),
+        chave=form_service.campo_chave(),
+        conhecidos=CAMPOS_CONHECIDOS,
+        chaves_possiveis=CHAVES_POSSIVEIS,
+        tipos=TIPOS,
+        usados={(f.stage, f.key) for f in FormField.query.all()},
+    )
+
+
+@bp.post("/formulario/salvar")
+@login_required
+def form_fields_save():
+    """Grava a configuração de todos os campos de uma vez.
+
+    Valida o conjunto antes de gravar: um formulário sem chave deixaria o
+    portal sem como reconhecer visitante recorrente, e uma chave desabilitada
+    teria o mesmo efeito — melhor recusar do que publicar algo quebrado.
+    """
+    from app.models.form_field import CHAVES_POSSIVEIS
+
+    campos = FormField.query.all()
+    chave_escolhida = request.form.get("chave", "").strip()
+
+    habilitados_login = [
+        c for c in campos
+        if c.stage == "login" and request.form.get(f"enabled_{c.id}")
+    ]
+    if not habilitados_login:
+        flash("A identificação precisa ter ao menos um campo ativo.", "error")
+        return redirect(url_for("admin.form_fields"))
+
+    if chave_escolhida not in {c.key for c in habilitados_login}:
+        flash("O campo de identificação escolhido precisa estar ativo no login.", "error")
+        return redirect(url_for("admin.form_fields"))
+    if chave_escolhida not in CHAVES_POSSIVEIS:
+        flash("Esse campo não pode identificar o visitante.", "error")
+        return redirect(url_for("admin.form_fields"))
+
+    for c in campos:
+        c.enabled  = bool(request.form.get(f"enabled_{c.id}"))
+        c.required = bool(request.form.get(f"required_{c.id}"))
+        c.is_key   = (c.stage == "login" and c.key == chave_escolhida)
+        c.label    = (request.form.get(f"label_{c.id}", "").strip() or c.label)[:80]
+        c.order    = request.form.get(f"order_{c.id}", type=int) or 0
+        c.placeholder = request.form.get(f"placeholder_{c.id}", "").strip()[:120] or None
+        c.help_text   = request.form.get(f"help_{c.id}", "").strip()[:200] or None
+        if c.field_type == "select":
+            c.options = request.form.get(f"options_{c.id}", "").strip() or None
+
+    # A chave e sempre obrigatoria: sem ela nao ha como identificar ninguem.
+    for c in campos:
+        if c.is_key:
+            c.required = True
+
+    db.session.commit()
+    flash("Formulário atualizado.", "success")
+    return redirect(url_for("admin.form_fields"))
+
+
+@bp.post("/formulario/adicionar")
+@login_required
+def form_field_add():
+    from app.models.form_field import CAMPOS_CONHECIDOS, TIPOS
+
+    stage = request.form.get("stage", "signup")
+    key   = request.form.get("key", "").strip().lower()
+    label = request.form.get("label", "").strip()[:80]
+    tipo  = request.form.get("field_type", "text")
+
+    if stage not in ("login", "signup"):
+        flash("Etapa inválida.", "error")
+        return redirect(url_for("admin.form_fields"))
+    if not key or not re.match(r"^[a-z][a-z0-9_]{1,39}$", key):
+        flash("Identificador inválido. Use letras minúsculas, números e _ (começando por letra).", "error")
+        return redirect(url_for("admin.form_fields"))
+    if not label:
+        flash("Informe o rótulo do campo.", "error")
+        return redirect(url_for("admin.form_fields"))
+    if tipo not in TIPOS:
+        flash("Tipo de campo inválido.", "error")
+        return redirect(url_for("admin.form_fields"))
+    if FormField.query.filter_by(key=key, stage=stage).first():
+        flash(f"Já existe um campo '{key}' nessa etapa.", "error")
+        return redirect(url_for("admin.form_fields"))
+
+    # Campo conhecido mantem o tipo que o sistema sabe validar; campo livre
+    # usa o tipo escolhido.
+    if key in CAMPOS_CONHECIDOS:
+        tipo = CAMPOS_CONHECIDOS[key]["tipo"]
+
+    ultimo = (db.session.query(func.max(FormField.order))
+              .filter_by(stage=stage).scalar() or 0)
+    campo = FormField(
+        key=key, stage=stage, label=label, field_type=tipo,
+        enabled=True, required=False, is_key=False, order=ultimo + 10,
+        options=(CAMPOS_CONHECIDOS.get(key) or {}).get("opcoes"),
+    )
+    db.session.add(campo)
+    db.session.commit()
+    flash(f"Campo '{label}' adicionado.", "success")
+    return redirect(url_for("admin.form_fields"))
+
+
+@bp.post("/formulario/<int:fid>/remover")
+@login_required
+def form_field_delete(fid: int):
+    campo = FormField.query.get_or_404(fid)
+    if campo.is_key:
+        flash("Não é possível remover o campo que identifica o visitante. "
+              "Escolha outro como identificador antes.", "error")
+        return redirect(url_for("admin.form_fields"))
+    nome = campo.label
+    db.session.delete(campo)
+    db.session.commit()
+    flash(f"Campo '{nome}' removido. Os dados já coletados continuam guardados.", "success")
+    return redirect(url_for("admin.form_fields"))
 
 
 # ─── Auditoria (LGPD) ─────────────────────────────────────────────────────────

@@ -12,9 +12,8 @@ from app.services.portal_service import (
     create_pending_session, authorize_visitor, record_consent, refresh_consent,
     log_acesso
 )
-from app.services.validator import (
-    validate_cpf, validate_phone, validate_email, normalize_phone, normalize_cpf
-)
+from app.services.validator import format_cpf, format_phone
+from app.services import form_service
 
 bp = Blueprint("portal", __name__)
 PORTAL_SESSION_KEY = "portal_session_id"
@@ -89,6 +88,7 @@ def entry(slug="default"):
     return render_template(
         "portal/start.html",
         ssid=ssid,
+        campos=form_service.campos("login"),
         privacy_url=current_app.config.get("PRIVACY_POLICY_URL", "#"),
         **_portal_cfg(),
     )
@@ -104,29 +104,29 @@ def identify():
         flash("Sess\u00e3o expirada. Por favor, conecte-se novamente ao WiFi.", "error")
         return redirect(url_for("portal.entry"))
 
-    cpf    = request.form.get("cpf",    "").strip()
-    mobile = request.form.get("mobile", "").strip()
-
-    if not cpf or not mobile:
-        log_acesso("ACESSO_NEGADO", "CAMPOS_VAZIOS", portal_session)
-        flash("Preencha CPF e celular.", "error")
-        return redirect(url_for("portal.entry"))
-    if not validate_cpf(cpf):
-        log_acesso("ACESSO_NEGADO", "CPF_INVALIDO", portal_session)
-        flash("CPF inv\u00e1lido.", "error")
-        return redirect(url_for("portal.entry"))
-    if not validate_phone(mobile):
-        log_acesso("ACESSO_NEGADO", "TELEFONE_INVALIDO", portal_session)
-        flash("N\u00famero de celular inv\u00e1lido.", "error")
+    valores, erro = form_service.coletar("login", request.form)
+    if erro:
+        log_acesso("ACESSO_NEGADO", "VALIDACAO", portal_session, detalhe=erro)
+        flash(erro, "error")
         return redirect(url_for("portal.entry"))
     if not request.form.get("terms_accepted"):
         log_acesso("ACESSO_NEGADO", "TERMOS_RECUSADOS", portal_session)
         flash("Voc\u00ea precisa aceitar os Termos de Uso para continuar.", "error")
         return redirect(url_for("portal.entry"))
 
-    cpf_norm    = normalize_cpf(cpf)
-    mobile_norm = normalize_phone(mobile)
-    visitor = Visitor.find_by_cpf(cpf_norm)
+    # A chave define quem e o visitante recorrente; o admin escolhe qual e.
+    chave = form_service.campo_chave()
+    valor_chave = valores.get(chave.key)
+    if not valor_chave:
+        log_acesso("ACESSO_NEGADO", "VALIDACAO", portal_session,
+                   detalhe=f"campo-chave {chave.key} ausente")
+        flash(f"Preencha o campo {chave.label}.", "error")
+        return redirect(url_for("portal.entry"))
+
+    visitor = Visitor.query.filter(
+        getattr(Visitor, chave.coluna) == valor_chave
+    ).first() if chave.coluna else None
+
     if visitor:
         if visitor.is_blocked:
             log_acesso("ACESSO_NEGADO", "VISITANTE_BLOQUEADO", portal_session, visitor,
@@ -134,15 +134,24 @@ def identify():
             flash("Seu acesso foi restrito. Entre em contato com o suporte.", "error")
             return redirect(url_for("portal.entry"))
 
-        # CPF é a chave de identificação; o telefone é atualizado quando muda,
-        # exceto se já pertencer a outro cadastro.
-        if visitor.mobile != mobile_norm:
-            taken = Visitor.query.filter(
-                Visitor.mobile == mobile_norm, Visitor.id != visitor.id
-            ).first()
-            if not taken:
-                visitor.mobile = mobile_norm
-                db.session.commit()
+        # Os demais campos do login sao complementares: atualizam o cadastro
+        # quando mudam, mas nunca sobrescrevem valor que ja e de outra pessoa.
+        for campo in form_service.campos("login"):
+            if campo.key == chave.key or campo.key not in valores:
+                continue
+            coluna = campo.coluna
+            novo = valores[campo.key]
+            if coluna and getattr(visitor, coluna) != novo:
+                em_uso = Visitor.query.filter(
+                    getattr(Visitor, coluna) == novo, Visitor.id != visitor.id
+                ).first()
+                if not em_uso:
+                    setattr(visitor, coluna, novo)
+            elif not coluna:
+                extras = visitor.extras
+                extras[campo.key] = novo
+                visitor.set_extras(extras)
+        db.session.commit()
 
         # Ele marcou o aceite agora; se os termos mudaram desde o cadastro,
         # o registro precisa refletir a versao que ele de fato aceitou.
@@ -162,23 +171,35 @@ def identify():
         flash("N\u00e3o foi poss\u00edvel autorizar o acesso agora. Tente novamente.", "error")
         return redirect(url_for("portal.entry"))
 
-    session["reg_cpf"]    = cpf_norm
-    session["reg_mobile"] = mobile_norm
+    session["reg_login"] = valores
     return redirect(url_for("portal.register"))
 
 
 @bp.get("/guest/cadastro")
 @csrf.exempt
 def register():
-    if not session.get("reg_cpf"):
+    if not session.get("reg_login"):
         return redirect(url_for("portal.entry"))
     portal_session = _get_portal_session()
     if not portal_session:
         return redirect(url_for("portal.entry"))
+
+    # Mostra o que ele ja informou na identificacao, formatado
+    informados = []
+    for campo in form_service.campos("login"):
+        valor = session["reg_login"].get(campo.key)
+        if not valor:
+            continue
+        if campo.field_type == "cpf":
+            valor = format_cpf(valor)
+        elif campo.field_type == "phone":
+            valor = format_phone(valor)
+        informados.append({"label": campo.label, "valor": valor})
+
     return render_template(
         "portal/register.html",
-        cpf=session.get("reg_cpf"),
-        mobile=session.get("reg_mobile"),
+        campos=form_service.campos("signup"),
+        informados=informados,
         privacy_url=current_app.config.get("PRIVACY_POLICY_URL", "#"),
         terms_version=current_app.config.get("TERMS_VERSION", "1.0"),
         **_portal_cfg(),
@@ -233,40 +254,48 @@ def register_submit():
         flash("Sess\u00e3o expirada. Por favor, conecte-se novamente.", "error")
         return redirect(url_for("portal.entry"))
 
-    cpf            = session.get("reg_cpf",    "").strip()
-    mobile         = session.get("reg_mobile", "").strip()
-    full_name      = request.form.get("full_name", "").strip()
-    email          = request.form.get("email",     "").strip().lower()
-    marketing_optin= bool(request.form.get("marketing_optin"))
-    terms_version  = current_app.config.get("TERMS_VERSION", "1.0")
+    dados_login = session.get("reg_login") or {}
+    marketing_optin = bool(request.form.get("marketing_optin"))
+    terms_version   = current_app.config.get("TERMS_VERSION", "1.0")
 
-    if not full_name or len(full_name.split()) < 2:
-        log_acesso("CADASTRO_NEGADO", "NOME_INVALIDO", portal_session)
-        flash("Informe seu nome completo (m\u00ednimo 2 palavras).", "error")
-        return redirect(url_for("portal.register"))
-    if email and not validate_email(email):
-        log_acesso("CADASTRO_NEGADO", "EMAIL_INVALIDO", portal_session)
-        flash("E-mail inv\u00e1lido.", "error")
+    valores, erro = form_service.coletar("signup", request.form)
+    if erro:
+        log_acesso("CADASTRO_NEGADO", "VALIDACAO", portal_session, detalhe=erro)
+        flash(erro, "error")
         return redirect(url_for("portal.register"))
 
-    visitor = Visitor.query.filter_by(cpf=cpf).first()
+    chave = form_service.campo_chave()
+    valor_chave = dados_login.get(chave.key)
+    if not valor_chave or not chave.coluna:
+        log_acesso("CADASTRO_NEGADO", "SESSAO_EXPIRADA", portal_session)
+        flash("Sess\u00e3o expirada. Por favor, identifique-se novamente.", "error")
+        return redirect(url_for("portal.entry"))
+
+    def busca():
+        return Visitor.query.filter(getattr(Visitor, chave.coluna) == valor_chave).first()
+
+    visitor = busca()
     created = False
     if visitor is None:
-        visitor = Visitor.create(
-            full_name=full_name, mobile=mobile, cpf=cpf,
-            email=email or None, terms_version=terms_version, marketing_optin=marketing_optin,
-        )
+        visitor = Visitor(terms_version=terms_version, marketing_optin=marketing_optin,
+                          visit_count=1)
+        # Os campos da identificacao e do cadastro sao gravados pela mesma
+        # regra: coluna propria quando existe, extra_data quando nao.
+        form_service.aplicar(visitor, dados_login, "login")
+        form_service.aplicar(visitor, valores, "signup")
         db.session.add(visitor)
         try:
             db.session.flush()
             created = True
         except IntegrityError:
             db.session.rollback()
-            visitor = Visitor.query.filter_by(cpf=cpf).first()
+            visitor = busca()
             if visitor is None:
                 log_acesso("CADASTRO_NEGADO", "ERRO_CADASTRO", portal_session)
                 flash("Erro ao cadastrar. Tente novamente.", "error")
                 return redirect(url_for("portal.register"))
+    else:
+        form_service.aplicar(visitor, valores, "signup")
 
     if created:
         record_consent(visitor, marketing_optin=marketing_optin, version=terms_version)
@@ -275,8 +304,7 @@ def register_submit():
 
     store = _get_session_store(portal_session)
     ok = authorize_visitor(portal_session, visitor, store)
-    session.pop("reg_cpf", None)
-    session.pop("reg_mobile", None)
+    session.pop("reg_login", None)
 
     if ok:
         log_acesso("ACESSO_LIBERADO", portal_session=portal_session, visitor=visitor)
