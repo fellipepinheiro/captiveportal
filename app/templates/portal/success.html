@@ -83,6 +83,44 @@
     }
     .instrucao strong { color: #e2e8f0; font-weight: 600; }
 
+    /* ── Contagem para o destino ─────────────────────────────────────── */
+    .contagem { margin-top: 1.5rem; }
+
+    .contagem-texto {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.75rem;
+      color: #94a3b8;
+      margin-bottom: 0.5rem;
+    }
+
+    .trilho {
+      height: 0.25rem;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      overflow: hidden;
+    }
+    .barra {
+      height: 100%;
+      width: 0;
+      border-radius: 999px;
+      background: {{ portal_btn_color | default('#0d9488') }};
+      transition: width 0.95s linear;
+    }
+
+    .botao {
+      display: block;
+      margin-top: 1rem;
+      padding: 0.8125rem 1rem;
+      border-radius: 0.875rem;
+      background: {{ portal_btn_color | default('#0d9488') }};
+      color: #fff;
+      font-size: 0.9375rem;
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .botao:active { filter: brightness(0.92); }
+
     .rodape {
       margin-top: 1.5rem;
       font-size: 0.75rem;
@@ -125,9 +163,26 @@
       Seu login foi concluído com sucesso e você já está conectado à internet.
     </p>
 
+    {% if destino_url %}
+    <div class="contagem">
+      <div class="contagem-texto">
+        <span>Levando você ao seu destino</span>
+        <span><strong id="segundos">5</strong>s</span>
+      </div>
+      <div class="trilho"><div class="barra" id="barra"></div></div>
+    </div>
+
+    <a class="botao" href="{{ destino_url }}" id="ir">Ir agora</a>
+
+    <p class="instrucao">
+      Se a página não abrir sozinha, toque em <strong>Ir agora</strong> —
+      ou feche esta janela e navegue normalmente.
+    </p>
+    {% else %}
     <p class="instrucao">
       Você pode <strong>fechar esta janela</strong> e navegar normalmente.
     </p>
+    {% endif %}
 
     <p class="rodape">
       Seus dados são protegidos conforme a LGPD.
@@ -160,6 +215,30 @@
         { enableHighAccuracy: false, timeout: 4000, maximumAge: 300000 }
       );
     })();
+
+    {% if destino_url %}
+    // ── Contagem até o destino ──────────────────────────────────────────
+    // Leva o visitante de volta ao endereço que ele tentava abrir quando o
+    // portal o interceptou. O botão "Ir agora" fica como saída manual: na
+    // janelinha de portal cativo do sistema a navegação automática pode ser
+    // descartada, e aí o toque é o que funciona.
+    (function contagem() {
+      var total = 5, passados = 0;
+      var destino = {{ destino_url | tojson }};
+      var barra = document.getElementById('barra');
+      var segundos = document.getElementById('segundos');
+
+      var tique = setInterval(function () {
+        passados++;
+        barra.style.width = (passados / total * 100) + '%';
+        segundos.textContent = Math.max(total - passados, 0);
+        if (passados >= total) {
+          clearInterval(tique);
+          window.location.href = destino;
+        }
+      }, 1000);
+    })();
+    {% endif %}
   </script>
 </body>
 </html>

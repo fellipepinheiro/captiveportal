@@ -68,6 +68,38 @@ def _resolve_store(slug: str):
     return None
 
 
+#: Enderecos que os sistemas operacionais chamam para descobrir se a rede
+#: tem internet. Quando e a janelinha de portal cativo que abre o portal, e
+#: um deles que chega no parametro `url` — nao um site que o visitante quis
+#: abrir. Mandar alguem para ca exibiria uma pagina em branco com "Success".
+_SONDAS_DE_CONECTIVIDADE = (
+    'captive.apple.com',
+    'connectivitycheck.gstatic.com',
+    'connectivitycheck.android.com',
+    'clients3.google.com',
+    'msftconnecttest.com',
+    'msftncsi.com',
+    'network-test.debian.org',
+    'detectportal.firefox.com',
+)
+
+
+def _destino_original(portal_session) -> str | None:
+    """Para onde o visitante estava indo quando o portal o interceptou.
+
+    Retorna None quando nao da para saber — sem destino a tela de sucesso
+    apenas avisa que o acesso foi liberado, em vez de prometer um
+    redirecionamento que nao levaria a lugar nenhum.
+    """
+    url = (getattr(portal_session, 'redirect_url', '') or '').strip()
+    if not url.startswith(('http://', 'https://')):
+        return None
+    alvo = url.split('/', 3)[2].lower() if url.count('/') >= 2 else ''
+    if any(sonda in alvo for sonda in _SONDAS_DE_CONECTIVIDADE):
+        return None
+    return url
+
+
 def _tela_login(erros=None, aviso=None, ssid=None):
     """Reexibe a identificacao mantendo o que o visitante ja digitou.
 
@@ -210,6 +242,7 @@ def identify():
                 "portal/success.html",
                 name=visitor.full_name,
                 ssid=portal_session.ssid,
+                destino_url=_destino_original(portal_session),
                 **_portal_cfg(),
             )
         log_acesso("ACESSO_NEGADO", "UNIFI_FALHOU", portal_session, visitor)
@@ -343,6 +376,7 @@ def register_submit():
             "portal/success.html",
             name=visitor.full_name,
             ssid=portal_session.ssid,
+            destino_url=_destino_original(portal_session),
             **_portal_cfg(),
         )
     log_acesso("ACESSO_NEGADO", "UNIFI_FALHOU", portal_session, visitor)
