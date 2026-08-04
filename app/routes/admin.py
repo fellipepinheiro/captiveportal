@@ -110,6 +110,14 @@ def serve_media(filename):
     # Verifica primeiro na pasta de avatars
     avatar_file = AVATAR_FOLDER / safe
     if avatar_file.exists():
+        # Avatar e foto de funcionario, so faz sentido dentro do painel.
+        # A rota inteira precisa continuar publica por causa do logo, que o
+        # visitante ve antes de ser autorizado — mas sem esta checagem os
+        # nomes seguem o padrao avatar_<id>.jpg e qualquer um da rede
+        # enumeraria as fotos da equipe.
+        if not current_user.is_authenticated:
+            from flask import abort
+            abort(404)
         return send_from_directory(AVATAR_FOLDER.resolve(), safe)
 
     # Depois na pasta raíz de uploads (logo, favicon etc.)
@@ -143,6 +151,24 @@ def login_post():
         db.session.commit()
         login_user(user, remember=False)
         return redirect(url_for("admin.dashboard"))
+
+    # Tentativa frustrada vai para a auditoria: sem isso um ataque de forca
+    # bruta contra o painel nao deixa rastro nenhum, e o rate limit sozinho
+    # so atrasa — nao avisa ninguem. O usuario tentado entra no registro; a
+    # senha, nunca.
+    try:
+        db.session.add(AuditLog(
+            event_type="ADMIN_LOGIN_FALHOU",
+            status="FAILURE",
+            payload=f"usuario tentado: {username[:60]!r}" if username else "usuario em branco",
+            ip_address=request.remote_addr,
+            actor="anonimo",
+        ))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+        current_app.logger.warning("falha ao registrar tentativa de login", exc_info=True)
+
     flash("Credenciais inválidas.", "error")
     return redirect(url_for("admin.login"))
 
@@ -424,7 +450,11 @@ def visitor_delete(vid: int):
         db.session.add(AuditLog(
             event_type="VISITOR_DELETED",
             status="SUCCESS",
-            payload=f"visitante '{nome}' (id={vid}) excluido pelo painel",
+            # Sem o nome de proposito: guardar quem foi excluido mantem o
+            # dado pessoal vivo justamente no registro da exclusao, o que
+            # esvazia o direito exercido (LGPD Art. 18, V). O id basta para
+            # a trilha de auditoria.
+            payload=f"cadastro de visitante id={vid} excluido pelo painel",
             actor=current_user.username,
             ip_address=request.remote_addr,
         ))
