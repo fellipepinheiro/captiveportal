@@ -70,18 +70,11 @@
         </div>
       </div>
 
-      <div class="pt-2 border-t border-white/5">
-        <label class="block text-xs text-slate-400 mb-1">Após liberar o acesso, abrir</label>
-        <input name="redirect_url" type="url"
-               value="{{ store.redirect_url or '' if store else '' }}"
-               placeholder="https://sualoja.com.br/promocao"
-               class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2 text-sm text-slate-100
-                      focus:outline-none focus:border-teal-500/50 transition">
-        <p class="text-xs text-slate-500 mt-1">
-          Em branco, o visitante volta para a página que tentava abrir — é o que
-          ele espera e costuma incomodar menos.
-        </p>
-      </div>
+      {# O campo de destino apos o acesso foi removido: a janelinha de portal
+         cativo do sistema fecha sozinha ao detectar internet e descarta
+         qualquer navegacao, entao o destino configurado nunca abria. A tela
+         de sucesso agora encerra o fluxo com um aviso de que o visitante
+         pode fechar a janela e navegar. #}
 
       <div>
         <label class="block text-xs text-slate-400 mb-1">Endereço da loja</label>

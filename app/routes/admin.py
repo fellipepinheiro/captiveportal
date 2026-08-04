@@ -801,11 +801,6 @@ def store_create():
         flash(f"Já existe uma loja com o slug '{slug}'.", "error")
         return redirect(url_for("admin.store_new"))
 
-    destino = request.form.get("redirect_url", "").strip()
-    if destino and not re.match(r"^https?://", destino):
-        flash("A URL de destino deve começar com http:// ou https://", "error")
-        return redirect(url_for("admin.store_new"))
-
     store = Store(
         name=name,
         slug=slug,
@@ -814,7 +809,6 @@ def store_create():
         unifi_site_id=request.form.get("unifi_site_id", "").strip() or "default",
         unifi_verify_ssl=bool(request.form.get("unifi_verify_ssl")),
         session_minutes=request.form.get("session_minutes", type=int),
-        redirect_url=request.form.get("redirect_url", "").strip()[:512] or None,
         address=request.form.get("address", "").strip()[:255] or None,
         latitude=request.form.get("latitude", type=float),
         longitude=request.form.get("longitude", type=float),
@@ -851,18 +845,12 @@ def store_update(sid: int):
         flash(f"Já existe uma loja com o slug '{slug}'.", "error")
         return redirect(url_for("admin.store_edit", sid=sid))
 
-    destino = request.form.get("redirect_url", "").strip()
-    if destino and not re.match(r"^https?://", destino):
-        flash("A URL de destino deve começar com http:// ou https://", "error")
-        return redirect(url_for("admin.store_edit", sid=sid))
-
     store.name             = name
     store.slug             = slug
     store.unifi_base_url   = request.form.get("unifi_base_url", "").strip()
     store.unifi_site_id    = request.form.get("unifi_site_id", "").strip() or "default"
     store.unifi_verify_ssl = bool(request.form.get("unifi_verify_ssl"))
     store.session_minutes  = request.form.get("session_minutes", type=int)
-    store.redirect_url     = request.form.get("redirect_url", "").strip()[:512] or None
     store.address          = request.form.get("address", "").strip()[:255] or None
     store.latitude         = request.form.get("latitude", type=float)
     store.longitude        = request.form.get("longitude", type=float)

@@ -27,6 +27,9 @@ class Store(db.Model):
     # Para onde mandar o visitante depois do acesso liberado. Vazio devolve
     # ele para a pagina que tentava abrir, que e o comportamento padrao de
     # um portal cativo.
+    #: Sem uso desde que a tela de sucesso passou a encerrar o fluxo: a
+    #: janela de portal cativo descarta qualquer navegacao. A coluna fica
+    #: para nao perder o que ja foi cadastrado.
     redirect_url = db.Column(db.String(512))
 
     # Localizacao da loja — referencia para calcular a distancia do visitante
@@ -38,10 +41,6 @@ class Store(db.Model):
     created_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
                            onupdate=lambda: datetime.now(timezone.utc))
-
-    def destino(self, url_original: str = None) -> str:
-        """URL para onde o visitante vai depois de liberado."""
-        return (self.redirect_url or '').strip() or url_original or 'http://google.com'
 
     @staticmethod
     def slugify(name: str) -> str:

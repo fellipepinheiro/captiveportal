@@ -68,30 +68,6 @@ def _resolve_store(slug: str):
     return None
 
 
-def _navegador_cativo() -> bool:
-    """Detecta a janelinha de portal cativo do sistema operacional.
-
-    iOS usa CaptiveNetworkSupport e Android CaptiveP/ConnectivityCheck.
-    Essas janelas fecham sozinhas assim que percebem que ha internet, e a
-    navegacao para outro site simplesmente nao acontece. Redirecionar
-    automaticamente ali nao funciona; o visitante precisa tocar num botao,
-    que o sistema abre no navegador de verdade.
-    """
-    ua = (request.headers.get("User-Agent") or "").lower()
-    return any(m in ua for m in ("captivenetworksupport", "wispr", "captivep"))
-
-
-def _destino(store, portal_session) -> str:
-    """Para onde mandar o visitante depois do acesso liberado.
-
-    A loja pode fixar um destino (site, promocao); sem isso ele volta para
-    a pagina que tentava abrir, que e o que a pessoa espera.
-    """
-    if store:
-        return store.destino(portal_session.redirect_url)
-    return portal_session.redirect_url or "http://google.com"
-
-
 def _tela_login(erros=None, aviso=None, ssid=None):
     """Reexibe a identificacao mantendo o que o visitante ja digitou.
 
@@ -232,8 +208,6 @@ def identify():
             log_acesso("ACESSO_LIBERADO", portal_session=portal_session, visitor=visitor)
             return render_template(
                 "portal/success.html",
-                redirect_url=_destino(store, portal_session),
-                navegador_cativo=_navegador_cativo(),
                 name=visitor.full_name,
                 **_portal_cfg(),
             )
@@ -366,8 +340,6 @@ def register_submit():
         log_acesso("ACESSO_LIBERADO", portal_session=portal_session, visitor=visitor)
         return render_template(
             "portal/success.html",
-            redirect_url=_destino(store, portal_session),
-            navegador_cativo=_navegador_cativo(),
             name=visitor.full_name,
             **_portal_cfg(),
         )

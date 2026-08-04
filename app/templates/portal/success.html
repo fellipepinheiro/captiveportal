@@ -1,119 +1,165 @@
-{% extends 'portal/base.html' %}
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Acesso liberado — {{ portal_title | default('Wi-Fi Visitantes') }}</title>
 
-{% block steps %}
-<div class="mb-6 flex items-center justify-center">
-  {% for _ in range(3) %}
-  <div class="step-dot done">
-    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none"
-         stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-      <polyline points="20 6 9 17 4 12"/>
-    </svg>
-  </div>
-  {% if not loop.last %}<div class="step-line done"></div>{% endif %}
-  {% endfor %}
-</div>
-{% endblock %}
+  {% if custom_logo_url %}
+  <link rel="icon" type="image/png" href="{{ custom_logo_url }}">
+  <link rel="apple-touch-icon" href="{{ custom_logo_url }}">
+  {% endif %}
 
-{% block content %}
-<div class="flex flex-col items-center text-center space-y-5" id="success-content">
+  <!-- Pagina autonoma de proposito: e a unica que o visitante ve dentro da
+       janelinha de portal cativo do sistema, onde carregar o Tailwind (JS)
+       e pouco confiavel. So HTML e CSS, tudo embutido, nada de rede. -->
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
 
-  <!-- Ícone animado -->
-  <div class="relative flex h-20 w-20 items-center justify-center">
-    <div class="absolute inset-0 animate-ping rounded-full opacity-20"
-         style="background:{{ portal_btn_color | default('#0d9488') }}"></div>
-    <div class="relative flex h-20 w-20 items-center justify-center rounded-full"
-         style="background:{{ portal_btn_color | default('#0d9488') }}25; border:1px solid {{ portal_btn_color | default('#0d9488') }}50">
+    body {
+      /* Fonte do sistema: San Francisco no iOS, Roboto no Android. */
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+                   'Helvetica Neue', Arial, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1.5rem;
+      color: #f1f5f9;
+      background: linear-gradient(135deg,
+                  {{ portal_bg_from | default('#0f172a') }},
+                  {{ portal_bg_via  | default('#1e1b4b') }},
+                  {{ portal_bg_to   | default('#0f172a') }});
+      -webkit-text-size-adjust: 100%;
+    }
+
+    .cartao {
+      width: 100%;
+      max-width: 24rem;
+      text-align: center;
+      padding: 2.25rem 1.75rem;
+      border-radius: 1.5rem;
+      background: rgba(15, 23, 42, 0.65);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+    }
+
+    .logo { max-height: 3.5rem; max-width: 11rem; margin: 0 auto 1.5rem; display: block; }
+
+    .selo {
+      width: 4.5rem;
+      height: 4.5rem;
+      margin: 0 auto 1.5rem;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: {{ portal_btn_color | default('#0d9488') }}25;
+      border: 1px solid {{ portal_btn_color | default('#0d9488') }}55;
+    }
+
+    .saudacao { font-size: 0.875rem; color: #94a3b8; margin-bottom: 0.375rem; }
+    .saudacao strong { color: #e2e8f0; font-weight: 600; }
+
+    h1 { font-size: 1.5rem; font-weight: 700; color: #f8fafc; letter-spacing: -0.01em; }
+
+    .mensagem {
+      margin-top: 0.75rem;
+      font-size: 0.9375rem;
+      line-height: 1.6;
+      color: #cbd5e1;
+    }
+
+    .instrucao {
+      margin-top: 1.5rem;
+      padding: 0.875rem 1rem;
+      border-radius: 0.875rem;
+      font-size: 0.875rem;
+      line-height: 1.55;
+      color: #a5b4c4;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.07);
+    }
+    .instrucao strong { color: #e2e8f0; font-weight: 600; }
+
+    .rodape {
+      margin-top: 1.5rem;
+      font-size: 0.75rem;
+      line-height: 1.6;
+      color: #64748b;
+    }
+    .rodape span { color: #94a3b8; }
+
+    /* Telas pequenas (a janela cativa costuma ser baixa). */
+    @media (max-height: 560px) {
+      .selo { width: 3.5rem; height: 3.5rem; margin-bottom: 1rem; }
+      .selo svg { width: 28px; height: 28px; }
+      .cartao { padding: 1.75rem 1.5rem; }
+      .logo { margin-bottom: 1rem; }
+    }
+  </style>
+</head>
+<body>
+  <main class="cartao">
+
+    {% if custom_logo_url %}
+    <img class="logo" src="{{ custom_logo_url }}" alt="Logo da empresa">
+    {% endif %}
+
+    <div class="selo">
       <svg width="36" height="36" viewBox="0 0 24 24" fill="none"
-           stroke="{{ portal_accent | default('#2dd4bf') }}" stroke-width="2"
+           stroke="{{ portal_accent | default('#2dd4bf') }}" stroke-width="2.5"
            stroke-linecap="round" stroke-linejoin="round">
         <polyline points="20 6 9 17 4 12"/>
       </svg>
     </div>
-  </div>
 
-  <div>
     {% if name %}
-    <p class="text-sm text-slate-400 mb-1">Olá, <strong class="text-slate-200">{{ name }}</strong>!</p>
+    <p class="saudacao">Olá, <strong>{{ name }}</strong>!</p>
     {% endif %}
-    <h2 class="text-2xl font-bold text-slate-50">Acesso liberado!</h2>
-    <p class="mt-1 text-sm text-slate-400">Você está conectado à internet.</p>
-  </div>
 
-  {% if not navegador_cativo %}
-  <!-- Barra de progresso: só quando o redirecionamento realmente acontece -->
-  <div class="w-full">
-    <div class="mb-2 flex items-center justify-between text-xs text-slate-500">
-      <span>Redirecionando em breve</span>
-      <span id="countdown">5</span>s
-    </div>
-    <div class="h-1.5 w-full overflow-hidden rounded-full" style="background:rgba(255,255,255,0.08)">
-      <div id="progress-bar" class="h-full rounded-full transition-all duration-300"
-           style="background:{{ portal_btn_color | default('#0d9488') }}; width:0%"></div>
-    </div>
-  </div>
-  {% endif %}
+    <h1>Acesso liberado</h1>
 
-  <!-- Continuar -->
-  <a href="{{ redirect_url or 'http://google.com' }}"
-     {% if navegador_cativo %}target="_blank" rel="noopener"{% endif %}
-     class="btn-primary text-center no-underline inline-block"
-     style="text-decoration:none">
-    {% if navegador_cativo %}Continuar{% else %}Acessar a internet agora{% endif %}
-  </a>
+    <p class="mensagem">
+      Seu login foi concluído com sucesso e você já está conectado à internet.
+    </p>
 
-  {% if navegador_cativo %}
-  <p class="text-xs leading-relaxed text-slate-500">
-    Toque em <strong class="text-slate-400">Continuar</strong> para abrir no seu navegador.
-    Esta janela de conexão fecha sozinha.
-  </p>
-  {% else %}
-  <p class="text-xs text-slate-600">
-    Se não redirecionar,
-    <a href="{{ redirect_url or 'http://google.com' }}"
-       class="text-slate-400 underline underline-offset-2">clique aqui</a>.
-  </p>
-  {% endif %}
-</div>
+    <p class="instrucao">
+      Você pode <strong>fechar esta janela</strong> e navegar normalmente.
+    </p>
 
-<script>
-  // ── Localização de origem ─────────────────────────────────────────────
-  // Roda depois que o acesso já foi liberado: a coleta não pode atrasar
-  // nem condicionar a entrada na internet. Se o visitante recusar, se o
-  // navegador cativo bloquear a API ou se der timeout, segue em silêncio.
-  (function coletarOrigem() {
-    if (!navigator.geolocation) return;
-    navigator.geolocation.getCurrentPosition(
-      function (pos) {
-        fetch('{{ url_for("portal.registrar_localizacao") }}', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            lat: pos.coords.latitude,
-            lon: pos.coords.longitude,
-            precisao: pos.coords.accuracy,
-          }),
-          keepalive: true,   // a página redireciona em 5s; não perde o envio
-        }).catch(function () {});
-      },
-      function () {},        // recusa ou erro: nada a fazer
-      { enableHighAccuracy: false, timeout: 4000, maximumAge: 300000 }
-    );
-  })();
+    <p class="rodape">
+      Seus dados são protegidos conforme a LGPD.
+      <br>Rede: <span>{{ ssid or 'Visitantes' }}</span>
+    </p>
 
-  {% if not navegador_cativo %}
-  // Só redireciona fora da janela cativa: ali a navegação é descartada.
-  const totalSeconds = 5;
-  let elapsed = 0;
-  const bar = document.getElementById('progress-bar');
-  const countEl = document.getElementById('countdown');
-  const redirectUrl = {{ (redirect_url or 'http://google.com') | tojson }};
+  </main>
 
-  const iv = setInterval(function(){
-    elapsed++;
-    bar.style.width = (elapsed / totalSeconds * 100) + '%';
-    countEl.textContent = totalSeconds - elapsed;
-    if (elapsed >= totalSeconds) { clearInterval(iv); window.location.href = redirectUrl; }
-  }, 1000);
-  {% endif %}
-</script>
-{% endblock %}
+  <script>
+    // ── Localização de origem ─────────────────────────────────────────────
+    // Roda depois que o acesso já foi liberado: a coleta não pode atrasar
+    // nem condicionar a entrada na internet. Se o visitante recusar, se o
+    // navegador cativo bloquear a API ou se der timeout, segue em silêncio.
+    (function coletarOrigem() {
+      if (!navigator.geolocation) return;
+      navigator.geolocation.getCurrentPosition(
+        function (pos) {
+          fetch('{{ url_for("portal.registrar_localizacao") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              lat: pos.coords.latitude,
+              lon: pos.coords.longitude,
+              precisao: pos.coords.accuracy,
+            }),
+            keepalive: true,   // a janela pode ser fechada a qualquer momento
+          }).catch(function () {});
+        },
+        function () {},        // recusa ou erro: nada a fazer
+        { enableHighAccuracy: false, timeout: 4000, maximumAge: 300000 }
+      );
+    })();
+  </script>
+</body>
+</html>
