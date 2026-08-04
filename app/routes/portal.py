@@ -84,20 +84,24 @@ _SONDAS_DE_CONECTIVIDADE = (
 )
 
 
-def _destino_original(portal_session) -> str | None:
-    """Para onde o visitante estava indo quando o portal o interceptou.
+def _destino_original(portal_session, store=None) -> str | None:
+    """Para onde mandar o visitante depois do acesso liberado.
 
-    Retorna None quando nao da para saber — sem destino a tela de sucesso
-    apenas avisa que o acesso foi liberado, em vez de prometer um
+    Preferencia para o endereco que ele tentava abrir quando foi
+    interceptado, que e o que a pessoa esperava. Quando nao ha um — caso da
+    janelinha de portal cativo, que so repassa a sondagem do sistema — cai
+    para o destino que a loja configurou. Sem nenhum dos dois, retorna None
+    e a tela apenas avisa que o acesso foi liberado, em vez de prometer um
     redirecionamento que nao levaria a lugar nenhum.
     """
     url = (getattr(portal_session, 'redirect_url', '') or '').strip()
-    if not url.startswith(('http://', 'https://')):
-        return None
-    alvo = url.split('/', 3)[2].lower() if url.count('/') >= 2 else ''
-    if any(sonda in alvo for sonda in _SONDAS_DE_CONECTIVIDADE):
-        return None
-    return url
+    if url.startswith(('http://', 'https://')):
+        alvo = url.split('/', 3)[2].lower() if url.count('/') >= 2 else ''
+        if not any(sonda in alvo for sonda in _SONDAS_DE_CONECTIVIDADE):
+            return url
+
+    da_loja = (getattr(store, 'redirect_url', '') or '').strip()
+    return da_loja or None
 
 
 def _tela_login(erros=None, aviso=None, ssid=None):
@@ -242,7 +246,7 @@ def identify():
                 "portal/success.html",
                 name=visitor.full_name,
                 ssid=portal_session.ssid,
-                destino_url=_destino_original(portal_session),
+                destino_url=_destino_original(portal_session, store),
                 **_portal_cfg(),
             )
         log_acesso("ACESSO_NEGADO", "UNIFI_FALHOU", portal_session, visitor)
@@ -376,7 +380,7 @@ def register_submit():
             "portal/success.html",
             name=visitor.full_name,
             ssid=portal_session.ssid,
-            destino_url=_destino_original(portal_session),
+            destino_url=_destino_original(portal_session, store),
             **_portal_cfg(),
         )
     log_acesso("ACESSO_NEGADO", "UNIFI_FALHOU", portal_session, visitor)
