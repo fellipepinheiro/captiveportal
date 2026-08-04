@@ -55,30 +55,50 @@ def register_commands(app):
     @click.option("--expired-ttl", default=365, show_default=True,
                   help="Dias até purgar sessões encerradas. O Marco Civil (Art. 15) "
                        "exige guardar registros de conexão por 1 ano.")
+    @click.option("--interval", type=int, default=0,
+                  help="Repete a cada N segundos. 0 (padrao) executa uma vez e sai.")
     @with_appcontext
-    def cleanup_sessions(pending_ttl, expired_ttl):
+    def cleanup_sessions(pending_ttl, expired_ttl, interval):
         """Remove sessões abandonadas e purga registros antigos de conexão."""
         from datetime import datetime, timezone, timedelta
         from app.models.portal_session import PortalSession
 
-        cutoff_pending = datetime.now(timezone.utc) - timedelta(minutes=pending_ttl)
-        cutoff_expired = datetime.now(timezone.utc) - timedelta(days=expired_ttl)
+        while True:
+            try:
+                cutoff_pending = datetime.now(timezone.utc) - timedelta(minutes=pending_ttl)
+                cutoff_expired = datetime.now(timezone.utc) - timedelta(days=expired_ttl)
 
-        # Abandonadas = abriram o portal e nunca concluiram a identificacao.
-        # O criterio e authorized_at IS NULL, nao authorized == False: uma
-        # sessao encerrada tambem fica com authorized False, e apagar essas
-        # destruiria o historico de conexoes (o extrato do visitante e o
-        # registro que o Marco Civil obriga a guardar).
-        n_pending = PortalSession.query.filter(
-            PortalSession.authorized_at.is_(None),
-            PortalSession.created_at < cutoff_pending
-        ).delete(synchronize_session=False)
+                # Abandonadas = abriram o portal e nunca concluiram a identificacao.
+                # O criterio e authorized_at IS NULL, nao authorized == False: uma
+                # sessao encerrada tambem fica com authorized False, e apagar essas
+                # destruiria o historico de conexoes (o extrato do visitante e o
+                # registro que o Marco Civil obriga a guardar).
+                #
+                # O corte por created_at protege quem ainda esta preenchendo o
+                # formulario: a sessao e o que liga o navegador ao MAC do
+                # aparelho, e apagar a de alguem no meio do cadastro derruba
+                # a pessoa com "sessao expirada".
+                n_pending = PortalSession.query.filter(
+                    PortalSession.authorized_at.is_(None),
+                    PortalSession.created_at < cutoff_pending
+                ).delete(synchronize_session=False)
 
-        n_expired = PortalSession.query.filter(
-            PortalSession.expired_at.isnot(None),
-            PortalSession.expired_at < cutoff_expired
-        ).delete(synchronize_session=False)
+                n_expired = PortalSession.query.filter(
+                    PortalSession.expired_at.isnot(None),
+                    PortalSession.expired_at < cutoff_expired
+                ).delete(synchronize_session=False)
 
-        db.session.commit()
-        click.echo(f"Limpeza concluída: {n_pending} abandonadas removidas, "
-                   f"{n_expired} registros antigos purgados.")
+                db.session.commit()
+                if n_pending or n_expired or not interval:
+                    click.echo(f"Limpeza concluída: {n_pending} abandonadas removidas, "
+                               f"{n_expired} registros antigos purgados.")
+            finally:
+                # Fecha a transacao a cada ciclo: mante-la aberta durante o
+                # sleep segura metadata lock em portal_sessions e trava
+                # qualquer ALTER TABLE de migration. Mesmo motivo do
+                # sync-sessions acima.
+                db.session.remove()
+
+            if not interval:
+                break
+            time.sleep(interval)

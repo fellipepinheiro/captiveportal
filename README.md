@@ -30,6 +30,9 @@ Portal de autenticação de visitantes para redes Wi-Fi corporativas, integrado 
 - Autorização via API REST de integração, autenticando por header `X-API-KEY`
 - Credenciais **por loja**: cada UDM Pro tem URL, API Key, Site ID e duração próprios
 - Encerramento automático das sessões de quem sai do Wi-Fi (serviço `session_sync`)
+- Descarte automático das sessões que abriram o portal e nunca se autenticaram
+  (serviço `cleanup`: varre a cada `CLEANUP_INTERVAL` segundos e remove o que
+  está parado há mais de `PENDING_SESSION_TTL` minutos)
 - Suporte a certificados auto-assinados (por loja)
 
 ### Segurança

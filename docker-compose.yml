@@ -56,6 +56,27 @@ services:
     networks:
       - internal
 
+  # Varre as sessoes que abriram o portal e nunca chegaram a se autenticar —
+  # quem tocou na rede e desistiu, ou so passou perto da loja. Sem isso elas
+  # ficam para sempre no painel como "Pend." e sujam a leitura do movimento.
+  #
+  # A varredura roda a cada CLEANUP_INTERVAL segundos, mas so remove o que
+  # esta parado ha mais de PENDING_SESSION_TTL minutos: apagar cedo demais
+  # derruba quem ainda esta preenchendo o cadastro.
+  cleanup:
+    build: .
+    container_name: unifi_portal_cleanup
+    command: ["flask", "cleanup-sessions",
+              "--interval", "${CLEANUP_INTERVAL:-180}",
+              "--pending-ttl", "${PENDING_SESSION_TTL:-15}"]
+    env_file: .env
+    restart: unless-stopped
+    depends_on:
+      migrator:
+        condition: service_completed_successfully
+    networks:
+      - internal
+
   web:
     build: .
     container_name: unifi_portal_web
