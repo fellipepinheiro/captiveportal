@@ -299,7 +299,19 @@ docker compose up -d --build web
 
 # Verificar status dos containers
 docker compose ps
+
+# Ver quem está com acesso liberado no controlador
+docker compose exec web flask guests
+
+# Derrubar o acesso para voltar a ver a tela de login num aparelho de teste
+docker compose exec web flask guests --all
+docker compose exec web flask guests --revoke 4a:cb:7c:0b:13:3d
 ```
+
+> **Por que `flask guests` existe:** o UniFi não manda ao portal quem já tem
+> autorização válida, e ela dura horas. Esquecer a rede no celular não resolve —
+> o aparelho costuma manter o mesmo MAC privado por SSID e reencontra a própria
+> autorização. Derrubar o acesso é o que faz a tela de login aparecer de novo.
 
 ---
 

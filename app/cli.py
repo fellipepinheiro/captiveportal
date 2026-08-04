@@ -23,6 +23,80 @@ def register_commands(app):
         db.session.commit()
         click.echo(f"Admin '{username}' criado com sucesso!")
 
+    @app.cli.command("guests")
+    @click.option("--store", "slug", default=None,
+                  help="Slug da loja. Sem isso, percorre todas as lojas ativas.")
+    @click.option("--revoke", "alvo", default=None, metavar="MAC",
+                  help="Derruba o acesso apenas deste MAC.")
+    @click.option("--all", "todos", is_flag=True,
+                  help="Derruba o acesso de todos os visitantes autorizados.")
+    @with_appcontext
+    def guests(slug, alvo, todos):
+        """Lista ou derruba os visitantes com acesso liberado no controlador.
+
+        Serve para voltar a ver a tela de login num aparelho de teste: o
+        UniFi nao manda ao portal quem ja tem autorizacao valida, e ela dura
+        horas. Esquecer a rede nao adianta — o celular costuma manter o
+        mesmo MAC privado e reencontra a propria autorizacao.
+        """
+        from app.models import Store
+        from app.services.unifi_api import get_unifi_for_store, UnifiAPIError
+
+        lojas = ([Store.query.filter_by(slug=slug).first()] if slug
+                 else Store.query.filter_by(is_active=True).all())
+        if not any(lojas):
+            click.echo(f"Loja '{slug}' nao encontrada." if slug else "Nenhuma loja ativa.")
+            return
+
+        total = 0
+        for store in filter(None, lojas):
+            try:
+                unifi = get_unifi_for_store(store)
+            except Exception as exc:
+                click.echo(f"[{store.slug}] falha ao montar o cliente UniFi: {exc}")
+                continue
+
+            if unifi.mock_involuntario:
+                click.echo(f"[{store.slug}] sem endereco de controlador — pulando.")
+                continue
+
+            site = store.unifi_site_id or "default"
+            try:
+                clientes = unifi.list_clients(site)
+            except UnifiAPIError as exc:
+                click.echo(f"[{store.slug}] falha ao listar clientes: {exc}")
+                continue
+
+            # O tipo GUEST sozinho nao basta: o dispositivo mantem esse tipo
+            # depois de revogado. O que indica acesso liberado e authorized.
+            autorizados = [c for c in clientes
+                           if (c.get("access") or {}).get("authorized") is True]
+            if alvo:
+                autorizados = [c for c in autorizados
+                               if (c.get("macAddress") or "").lower() == alvo.lower()]
+
+            total += len(autorizados)
+            if not autorizados:
+                click.echo(f"[{store.slug}] nenhum visitante autorizado"
+                           + (f" com o MAC {alvo}." if alvo else "."))
+                continue
+
+            for c in autorizados:
+                mac = c.get("macAddress")
+                nome = c.get("name") or ""
+                if not (todos or alvo):
+                    click.echo(f"[{store.slug}] {mac}  {nome}")
+                    continue
+                try:
+                    unifi.revoke_guest(site, c["id"])
+                    click.echo(f"[{store.slug}] {mac}  {nome} -> derrubado")
+                except UnifiAPIError as exc:
+                    click.echo(f"[{store.slug}] {mac}  {nome} -> FALHOU: {exc}")
+
+        if total and not (todos or alvo):
+            click.echo(f"\n{total} autorizado(s). Use --all para derrubar todos, "
+                       f"ou --revoke <mac> para um so.")
+
     @app.cli.command("sync-sessions")
     @click.option("--interval", type=int, default=0,
                   help="Repete a cada N segundos. 0 (padrao) executa uma vez e sai.")
