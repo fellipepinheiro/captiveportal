@@ -22,6 +22,15 @@
 {% endblock %}
 
 {% block content %}
+{% if aviso %}
+<div class="mb-4 flex items-start gap-2.5 rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3">
+  <svg class="mt-0.5 h-4 w-4 shrink-0 text-amber-400" viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" stroke-width="2">
+    <circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/>
+  </svg>
+  <p class="text-xs leading-relaxed text-amber-100/90">{{ aviso }}</p>
+</div>
+{% endif %}
 <!-- Dados já informados -->
 <div class="mb-5 rounded-xl border border-white/8 bg-white/4 px-4 py-3 space-y-1">
   <p class="text-xs font-medium uppercase tracking-wide text-slate-500">Dados informados</p>

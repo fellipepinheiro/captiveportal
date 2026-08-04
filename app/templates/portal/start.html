@@ -17,6 +17,15 @@
 {% endblock %}
 
 {% block content %}
+{% if aviso %}
+<div class="mb-4 flex items-start gap-2.5 rounded-xl border border-amber-500/25 bg-amber-500/10 px-4 py-3">
+  <svg class="mt-0.5 h-4 w-4 shrink-0 text-amber-400" viewBox="0 0 24 24" fill="none"
+       stroke="currentColor" stroke-width="2">
+    <circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/>
+  </svg>
+  <p class="text-xs leading-relaxed text-amber-100/90">{{ aviso }}</p>
+</div>
+{% endif %}
 <form method="post" action="{{ url_for('portal.identify') }}" class="space-y-4"
       id="form-identify" novalidate autocomplete="on">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -46,7 +55,8 @@
          class="underline underline-offset-2 text-slate-300 hover:text-white transition">Política de Privacidade</a>.
     </span>
   </label>
-  <p class="-mt-2 hidden text-xs text-rose-400" id="terms-error">Você precisa aceitar os termos.</p>
+  <p class="-mt-2 text-xs text-rose-400 {% if not (erros or {}).get('terms_accepted') %}hidden{% endif %}"
+     id="terms-error">{{ (erros or {}).get('terms_accepted') or 'Aceite os Termos de Uso para continuar.' }}</p>
 
   <div class="pt-1">
     <button type="submit" class="btn-primary" id="btn-submit">Continuar</button>

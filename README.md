@@ -30,6 +30,9 @@ Portal de autenticação de visitantes para redes Wi-Fi corporativas, integrado 
 - Autorização via API REST de integração, autenticando por header `X-API-KEY`
 - Credenciais **por loja**: cada UDM Pro tem URL, API Key, Site ID e duração próprios
 - Encerramento automático das sessões de quem sai do Wi-Fi (serviço `session_sync`)
+- Descarte automático das sessões que abriram o portal e nunca se autenticaram
+  (serviço `cleanup`: varre a cada `CLEANUP_INTERVAL` segundos e remove o que
+  está parado há mais de `PENDING_SESSION_TTL` minutos)
 - Suporte a certificados auto-assinados (por loja)
 
 ### Segurança
@@ -296,7 +299,19 @@ docker compose up -d --build web
 
 # Verificar status dos containers
 docker compose ps
+
+# Ver quem está com acesso liberado no controlador
+docker compose exec web flask guests
+
+# Derrubar o acesso para voltar a ver a tela de login num aparelho de teste
+docker compose exec web flask guests --all
+docker compose exec web flask guests --revoke 4a:cb:7c:0b:13:3d
 ```
+
+> **Por que `flask guests` existe:** o UniFi não manda ao portal quem já tem
+> autorização válida, e ela dura horas. Esquecer a rede no celular não resolve —
+> o aparelho costuma manter o mesmo MAC privado por SSID e reencontra a própria
+> autorização. Derrubar o acesso é o que faz a tela de login aparecer de novo.
 
 ---
 

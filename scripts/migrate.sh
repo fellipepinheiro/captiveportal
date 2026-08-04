@@ -56,20 +56,34 @@ try:
 
     db_rev = row[0]
 
-    # Verifica se essa revisao existe nos arquivos de migration
-    result = subprocess.run(
-        ["alembic", "show", db_rev],
-        capture_output=True, text=True
-    )
-    if result.returncode != 0:
-        print(f"[migrate] AVISO: revisao '{db_rev}' nao encontrada nos arquivos "
-              "de migration (hash fantasma).")
-        print("[migrate] Limpando alembic_version para reconstrucao...")
-        cur.execute("DELETE FROM alembic_version")
-        conn.commit()
-        print("[migrate] alembic_version limpa. O upgrade ira recriar o estado.")
-    else:
+    # Confere se a revisao gravada existe nos arquivos de migration.
+    # A verificacao e feita lendo os proprios arquivos, e nao com
+    # `alembic show`: aquele comando falha por varios motivos (configuracao,
+    # diretorio de trabalho, imagem desatualizada) e o retorno diferente de
+    # zero nao significa que a revisao seja invalida.
+    import re
+    from pathlib import Path
+
+    revisoes = set()
+    for arquivo in Path("migrations/versions").glob("*.py"):
+        m = re.search(r"^revision\s*=\s*['\"]([^'\"]+)", arquivo.read_text(), re.M)
+        if m:
+            revisoes.add(m.group(1))
+
+    if db_rev in revisoes:
         print(f"[migrate] Revisao '{db_rev}' valida. Nenhuma correcao necessaria.")
+    else:
+        # Apagar alembic_version faria o upgrade tentar recriar tudo do zero
+        # sobre um banco que ja tem as tabelas — o resultado e a migration
+        # abortar em "table already exists", e nao um banco reconstruido.
+        # Para com erro claro em vez de mexer no controle de versao sozinho.
+        print(f"[migrate] ERRO: o banco esta na revisao '{db_rev}', que nao existe "
+              "nos arquivos de migration desta imagem.", file=sys.stderr)
+        print("[migrate] Isso costuma significar imagem desatualizada — reconstrua "
+              "com 'docker compose build' antes de subir.", file=sys.stderr)
+        print("[migrate] Se a revisao foi mesmo removida do projeto, ajuste com "
+              "'flask db stamp <revisao>' apos conferir o schema.", file=sys.stderr)
+        sys.exit(1)
 
     cur.close()
     conn.close()

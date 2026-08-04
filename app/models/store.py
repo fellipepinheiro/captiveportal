@@ -24,6 +24,14 @@ class Store(db.Model):
     unifi_verify_ssl = db.Column(db.Boolean, default=False)
     session_minutes  = db.Column(db.Integer, nullable=True)  # None = usa o default global
 
+    # Para onde mandar o visitante depois do acesso liberado. Vazio devolve
+    # ele para a pagina que tentava abrir, que e o comportamento padrao de
+    # um portal cativo.
+    #: Sem uso desde que a tela de sucesso passou a encerrar o fluxo: a
+    #: janela de portal cativo descarta qualquer navegacao. A coluna fica
+    #: para nao perder o que ja foi cadastrado.
+    redirect_url = db.Column(db.String(512))
+
     # Localizacao da loja — referencia para calcular a distancia do visitante
     address    = db.Column(db.String(255))
     latitude   = db.Column(db.Numeric(10, 7))

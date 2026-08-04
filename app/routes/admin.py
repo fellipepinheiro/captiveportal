@@ -367,7 +367,16 @@ def visitor_block(vid: int):
     visitor.is_blocked   = True
     visitor.block_reason = reason
     db.session.commit()
-    flash(f"Visitante '{visitor.full_name}' bloqueado.", "success")
+
+    # Bloquear sem derrubar nao tira ninguem da rede: a autorizacao ja
+    # concedida vale ate a janela expirar.
+    from app.services.portal_service import revoke_visitor_sessions
+    derrubadas = revoke_visitor_sessions(visitor)
+
+    aviso = f"Visitante '{visitor.full_name}' bloqueado."
+    if derrubadas:
+        aviso += f" {derrubadas} conexão(ões) encerrada(s)."
+    flash(aviso, "success")
     return redirect(url_for("admin.visitors"))
 
 
@@ -395,6 +404,11 @@ def visitor_delete(vid: int):
     visitor = Visitor.query.get_or_404(vid)
     nome = visitor.full_name
 
+    # Derruba antes de apagar: depois de desvincular as sessoes nao ha mais
+    # como saber quais dispositivos eram dele.
+    from app.services.portal_service import revoke_visitor_sessions
+    derrubadas = revoke_visitor_sessions(visitor)
+
     try:
         # Desvincula os logs em vez de apaga-los
         PortalSession.query.filter_by(visitor_id=visitor.id).update(
@@ -421,8 +435,12 @@ def visitor_delete(vid: int):
         flash("Não foi possível excluir o cadastro.", "error")
         return redirect(url_for("admin.visitors"))
 
-    flash(f"Cadastro de '{nome}' excluído. Os registros de acesso foram mantidos "
-          f"de forma anônima, conforme o Marco Civil da Internet.", "success")
+    aviso = f"Cadastro de '{nome}' excluído."
+    if derrubadas:
+        aviso += f" {derrubadas} conexão(ões) encerrada(s)."
+    aviso += (" Os registros de acesso foram mantidos de forma anônima, "
+              "conforme o Marco Civil da Internet.")
+    flash(aviso, "success")
     return redirect(url_for("admin.visitors"))
 
 
@@ -783,6 +801,11 @@ def store_create():
         flash(f"Já existe uma loja com o slug '{slug}'.", "error")
         return redirect(url_for("admin.store_new"))
 
+    destino = request.form.get("redirect_url", "").strip()
+    if destino and not re.match(r"^https?://", destino):
+        flash("O destino deve começar com http:// ou https://", "error")
+        return redirect(url_for("admin.store_new"))
+
     store = Store(
         name=name,
         slug=slug,
@@ -791,6 +814,7 @@ def store_create():
         unifi_site_id=request.form.get("unifi_site_id", "").strip() or "default",
         unifi_verify_ssl=bool(request.form.get("unifi_verify_ssl")),
         session_minutes=request.form.get("session_minutes", type=int),
+        redirect_url=destino[:512] or None,
         address=request.form.get("address", "").strip()[:255] or None,
         latitude=request.form.get("latitude", type=float),
         longitude=request.form.get("longitude", type=float),
@@ -827,12 +851,18 @@ def store_update(sid: int):
         flash(f"Já existe uma loja com o slug '{slug}'.", "error")
         return redirect(url_for("admin.store_edit", sid=sid))
 
+    destino = request.form.get("redirect_url", "").strip()
+    if destino and not re.match(r"^https?://", destino):
+        flash("O destino deve começar com http:// ou https://", "error")
+        return redirect(url_for("admin.store_edit", sid=sid))
+
     store.name             = name
     store.slug             = slug
     store.unifi_base_url   = request.form.get("unifi_base_url", "").strip()
     store.unifi_site_id    = request.form.get("unifi_site_id", "").strip() or "default"
     store.unifi_verify_ssl = bool(request.form.get("unifi_verify_ssl"))
     store.session_minutes  = request.form.get("session_minutes", type=int)
+    store.redirect_url     = destino[:512] or None
     store.address          = request.form.get("address", "").strip()[:255] or None
     store.latitude         = request.form.get("latitude", type=float)
     store.longitude        = request.form.get("longitude", type=float)
@@ -877,6 +907,15 @@ def store_test(sid: int):
     store = Store.query.get_or_404(sid)
     try:
         unifi = get_unifi_for_store(store)
+        # Sem endereco de controlador o cliente responde com dados falsos, e
+        # o teste diria "conexao OK" para uma loja que nao libera ninguem.
+        if unifi.mock_involuntario:
+            return jsonify({
+                "ok": False,
+                "error": "Loja sem endereço do controlador. Preencha a URL do "
+                         "UniFi (ex.: https://192.168.1.1) — sem ela nenhum "
+                         "visitante é liberado.",
+            }), 400
         sites = unifi.get_sites()
         return jsonify({"ok": True, "mock": unifi.mock, "sites": sites})
     except UnifiAPIError as exc:
@@ -987,6 +1026,72 @@ def store_disconnect(sid: int):
         db.session.commit()
 
     return jsonify({"ok": True, "mensagem": msg, "sessoes_encerradas": encerradas})
+
+
+@bp.post("/lojas/<int:sid>/derrubar-todos")
+@login_required
+@limiter.limit("6 per minute")
+def store_disconnect_all(sid: int):
+    """Derruba de uma vez todos os visitantes autorizados desta loja.
+
+    Existe sobretudo para teste: o UniFi nao manda ao portal quem ja tem
+    autorizacao valida, e ela dura horas, entao sem derrubar nao da para
+    rever a tela de login. Esquecer a rede no aparelho nao adianta — o
+    celular costuma manter o mesmo MAC privado por SSID e reencontra a
+    propria autorizacao.
+    """
+    store = Store.query.get_or_404(sid)
+    site_id = store.unifi_site_id or "default"
+
+    try:
+        unifi = get_unifi_for_store(store)
+        if unifi.mock_involuntario:
+            return jsonify({"ok": False, "error": "Loja sem endereço do controlador."}), 400
+        clientes = unifi.list_clients(site_id)
+    except UnifiAPIError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 502
+
+    # O tipo GUEST sozinho nao basta: o dispositivo mantem esse tipo depois
+    # de revogado. O que indica acesso liberado e access.authorized.
+    autorizados = [c for c in clientes
+                   if (c.get("access") or {}).get("authorized") is True]
+    if not autorizados:
+        return jsonify({"ok": True, "derrubados": 0,
+                        "mensagem": "Ninguém estava com acesso liberado."})
+
+    derrubados, falhas, macs = 0, [], []
+    for c in autorizados:
+        mac = (c.get("macAddress") or "").lower()
+        try:
+            unifi.revoke_guest(site_id, c["id"])
+            derrubados += 1
+            macs.append(mac)
+        except UnifiAPIError as exc:
+            # Ja estar sem autorizacao e o objetivo cumprido, nao um erro.
+            if exc.code == "api.client.no-active-guest-authorization":
+                macs.append(mac)
+                continue
+            falhas.append(f"{mac}: {exc}")
+
+    encerradas = 0
+    if macs:
+        for ps in (PortalSession.query
+                   .filter(func.lower(PortalSession.client_mac).in_(macs))
+                   .filter(PortalSession.authorized.is_(True))
+                   .filter(PortalSession.expired_at.is_(None)).all()):
+            ps.close(max_minutes=store.session_minutes or
+                     current_app.config.get("UNIFI_SESSION_MINUTES", 480))
+            encerradas += 1
+        if encerradas:
+            db.session.commit()
+
+    mensagem = f"{derrubados} conexão(ões) derrubada(s)."
+    if falhas:
+        mensagem += f" {len(falhas)} falhou(aram)."
+    return jsonify({"ok": not falhas, "derrubados": derrubados,
+                    "sessoes_encerradas": encerradas,
+                    "error": "; ".join(falhas) if falhas else None,
+                    "mensagem": mensagem})
 
 
 # ─── Campos do formulário ─────────────────────────────────────────────────────

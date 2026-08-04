@@ -86,23 +86,34 @@ def _valida(campo, valor: str):
     tipo = campo.field_type
 
     if tipo == 'cpf':
+        digitos = re.sub(r'\D', '', valor)
+        if len(digitos) != 11:
+            return None, f'{campo.label} deve ter 11 dígitos (faltam {11 - len(digitos)}).' \
+                if len(digitos) < 11 else f'{campo.label} deve ter 11 dígitos.'
         if not validate_cpf(valor):
-            return None, f'{campo.label} inválido.'
+            return None, f'{campo.label} não confere. Verifique os dígitos.'
         return normalize_cpf(valor), None
 
     if tipo == 'phone':
+        digitos = re.sub(r'\D', '', valor)
+        if len(digitos) < 10:
+            return None, f'{campo.label} incompleto. Informe DDD + número.'
+        if len(digitos) > 11:
+            return None, f'{campo.label} tem dígitos demais.'
         if not validate_phone(valor):
-            return None, f'{campo.label} inválido. Informe com DDD.'
+            return None, f'{campo.label} não parece um número válido. Confira o DDD.'
         return normalize_phone(valor), None
 
     if tipo == 'email':
+        if '@' not in valor:
+            return None, f'Falta o @ no {campo.label.lower()}.'
         if not validate_email(valor):
-            return None, f'{campo.label} inválido.'
+            return None, f'{campo.label} incompleto. Exemplo: nome@provedor.com'
         return valor.lower(), None
 
     if tipo == 'name':
         if len(valor.split()) < 2:
-            return None, f'Informe o {campo.label.lower()} (mínimo 2 palavras).'
+            return None, 'Informe nome e sobrenome.'
         return valor, None
 
     if tipo == 'date':
@@ -123,7 +134,7 @@ def _valida(campo, valor: str):
     if tipo == 'zipcode':
         digitos = re.sub(r'\D', '', valor)
         if len(digitos) != 8:
-            return None, f'{campo.label} inválido.'
+            return None, f'{campo.label} deve ter 8 dígitos.'
         return digitos, None
 
     if tipo == 'select':
@@ -135,26 +146,31 @@ def _valida(campo, valor: str):
     return valor[:200], None
 
 
-def coletar(stage: str, form) -> tuple[dict, str]:
+def coletar(stage: str, form) -> tuple[dict, dict]:
     """Le e valida os campos da etapa.
 
-    Retorna (valores_por_chave, primeiro_erro). Para com o primeiro erro
-    para nao despejar varias mensagens de uma vez no visitante.
+    Retorna (valores_validados, erros_por_campo). Valida tudo antes de
+    devolver, em vez de parar no primeiro problema: quem errou dois campos
+    prefere ver os dois de uma vez a descobrir um por vez a cada tentativa.
+
+    Os erros vem indexados pela chave do campo para que a tela consiga
+    apontar exatamente onde esta o problema.
     """
-    valores = {}
+    valores, erros = {}, {}
     for campo in campos(stage):
         bruto = (form.get(campo.key) or '').strip()
 
         if not bruto:
             if campo.required:
-                return {}, f'Preencha o campo {campo.label}.'
+                erros[campo.key] = f'{campo.label} é obrigatório.'
             continue
 
         valor, erro = _valida(campo, bruto)
         if erro:
-            return {}, erro
-        valores[campo.key] = valor
-    return valores, None
+            erros[campo.key] = erro
+        else:
+            valores[campo.key] = valor
+    return valores, erros
 
 
 def aplicar(visitor, valores: dict, stage: str):

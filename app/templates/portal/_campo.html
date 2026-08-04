@@ -2,6 +2,10 @@
    Fica em parcial porque a identificação e o cadastro usam exatamente a
    mesma regra — o que muda é só a etapa. #}
 {% set tipo = campo.field_type %}
+{% set erro = (erros or {}).get(campo.key) %}
+{# Reexibe o que foi digitado: apos um erro, o visitante nao deve
+   redigitar o que ja estava certo. #}
+{% set valor = (valores or request.form).get(campo.key, '') %}
 <div>
   <label for="{{ campo.key }}" class="mb-1.5 block text-sm font-medium text-slate-300">
     {{ campo.label }}
@@ -34,10 +38,10 @@
     {% if tipo == 'select' %}
       <select id="{{ campo.key }}" name="{{ campo.key }}"
               {% if campo.required %}required{% endif %}
-              class="input-field">
+              class="input-field {% if erro %}error{% endif %}">
         <option value="">Selecione…</option>
         {% for opcao in campo.lista_opcoes %}
-        <option value="{{ opcao }}" {% if request.form.get(campo.key) == opcao %}selected{% endif %}>{{ opcao }}</option>
+        <option value="{{ opcao }}" {% if valor == opcao %}selected{% endif %}>{{ opcao }}</option>
         {% endfor %}
       </select>
 
@@ -53,14 +57,24 @@
              {% if tipo == 'cpf' %}maxlength="14" autocomplete="off"{% endif %}
              {% if tipo == 'zipcode' %}maxlength="9"{% endif %}
              data-mask="{{ tipo }}"
-             class="input-field {% if tipo in ('cpf','phone','email','name','zipcode') %}pl-10{% endif %}"
+             class="input-field {% if tipo in ('cpf','phone','email','name','zipcode') %}pl-10{% endif %}
+                    {% if erro %}error{% endif %}"
              placeholder="{{ campo.placeholder or '' }}"
-             value="{{ request.form.get(campo.key, '') }}">
+             {% if erro %}aria-invalid="true" aria-describedby="{{ campo.key }}-error"{% endif %}
+             value="{{ valor }}">
     {% endif %}
   </div>
 
-  {% if campo.help_text %}
+  {% if campo.help_text and not erro %}
   <p class="mt-1 text-xs text-slate-500">{{ campo.help_text }}</p>
   {% endif %}
-  <p class="mt-1 hidden text-xs text-rose-400" id="{{ campo.key }}-error"></p>
+  <p class="mt-1 flex items-start gap-1 text-xs text-rose-400 {% if not erro %}hidden{% endif %}"
+     id="{{ campo.key }}-error">
+    {%- if erro %}
+    <svg class="mt-0.5 h-3 w-3 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+      <circle cx="12" cy="12" r="10"/><path d="M12 8v5M12 16h.01"/>
+    </svg>
+    <span>{{ erro }}</span>
+    {%- endif %}
+  </p>
 </div>

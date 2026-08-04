@@ -68,6 +68,87 @@ def _resolve_store(slug: str):
     return None
 
 
+#: Enderecos que os sistemas operacionais chamam para descobrir se a rede
+#: tem internet. Quando e a janelinha de portal cativo que abre o portal, e
+#: um deles que chega no parametro `url` — nao um site que o visitante quis
+#: abrir. Mandar alguem para ca exibiria uma pagina em branco com "Success".
+_SONDAS_DE_CONECTIVIDADE = (
+    'captive.apple.com',
+    'connectivitycheck.gstatic.com',
+    'connectivitycheck.android.com',
+    'clients3.google.com',
+    'msftconnecttest.com',
+    'msftncsi.com',
+    'network-test.debian.org',
+    'detectportal.firefox.com',
+)
+
+
+def _destino_original(portal_session, store=None) -> str | None:
+    """Para onde mandar o visitante depois do acesso liberado.
+
+    Preferencia para o endereco que ele tentava abrir quando foi
+    interceptado, que e o que a pessoa esperava. Quando nao ha um — caso da
+    janelinha de portal cativo, que so repassa a sondagem do sistema — cai
+    para o destino que a loja configurou. Sem nenhum dos dois, retorna None
+    e a tela apenas avisa que o acesso foi liberado, em vez de prometer um
+    redirecionamento que nao levaria a lugar nenhum.
+    """
+    url = (getattr(portal_session, 'redirect_url', '') or '').strip()
+    if url.startswith(('http://', 'https://')):
+        alvo = url.split('/', 3)[2].lower() if url.count('/') >= 2 else ''
+        if not any(sonda in alvo for sonda in _SONDAS_DE_CONECTIVIDADE):
+            return url
+
+    da_loja = (getattr(store, 'redirect_url', '') or '').strip()
+    return da_loja or None
+
+
+def _tela_login(erros=None, aviso=None, ssid=None):
+    """Reexibe a identificacao mantendo o que o visitante ja digitou.
+
+    Antes cada erro fazia redirect, o que limpava o formulario e obrigava a
+    redigitar tudo — em teclado de celular, motivo suficiente para desistir
+    do acesso.
+    """
+    return render_template(
+        "portal/start.html",
+        ssid=ssid or request.form.get("ssid") or "WiFi",
+        campos=form_service.campos("login"),
+        erros=erros or {},
+        aviso=aviso,
+        valores=request.form,
+        privacy_url=current_app.config.get("PRIVACY_POLICY_URL", "#"),
+        **_portal_cfg(),
+    )
+
+
+def _tela_cadastro(erros=None, aviso=None):
+    """Reexibe o cadastro mantendo o que ja foi preenchido."""
+    informados = []
+    for campo in form_service.campos("login"):
+        valor = (session.get("reg_login") or {}).get(campo.key)
+        if not valor:
+            continue
+        if campo.field_type == "cpf":
+            valor = format_cpf(valor)
+        elif campo.field_type == "phone":
+            valor = format_phone(valor)
+        informados.append({"label": campo.label, "valor": valor})
+
+    return render_template(
+        "portal/register.html",
+        campos=form_service.campos("signup"),
+        informados=informados,
+        erros=erros or {},
+        aviso=aviso,
+        valores=request.form,
+        privacy_url=current_app.config.get("PRIVACY_POLICY_URL", "#"),
+        terms_version=current_app.config.get("TERMS_VERSION", "1.0"),
+        **_portal_cfg(),
+    )
+
+
 @bp.get("/guest/s/<slug>/")
 @bp.get("/guest/")
 @csrf.exempt
@@ -101,18 +182,17 @@ def identify():
     portal_session = _get_portal_session()
     if not portal_session:
         log_acesso("ACESSO_NEGADO", "SESSAO_EXPIRADA")
-        flash("Sess\u00e3o expirada. Por favor, conecte-se novamente ao WiFi.", "error")
+        flash("A tela ficou aberta tempo demais. Desligue e ligue o Wi-Fi "
+              "do aparelho para recomeçar.", "error")
         return redirect(url_for("portal.entry"))
 
-    valores, erro = form_service.coletar("login", request.form)
-    if erro:
-        log_acesso("ACESSO_NEGADO", "VALIDACAO", portal_session, detalhe=erro)
-        flash(erro, "error")
-        return redirect(url_for("portal.entry"))
+    valores, erros = form_service.coletar("login", request.form)
     if not request.form.get("terms_accepted"):
-        log_acesso("ACESSO_NEGADO", "TERMOS_RECUSADOS", portal_session)
-        flash("Voc\u00ea precisa aceitar os Termos de Uso para continuar.", "error")
-        return redirect(url_for("portal.entry"))
+        erros["terms_accepted"] = "Aceite os Termos de Uso para continuar."
+    if erros:
+        log_acesso("ACESSO_NEGADO", "VALIDACAO", portal_session,
+                   detalhe="; ".join(f"{k}: {v}" for k, v in erros.items()))
+        return _tela_login(erros=erros)
 
     # A chave define quem e o visitante recorrente; o admin escolhe qual e.
     chave = form_service.campo_chave()
@@ -120,8 +200,7 @@ def identify():
     if not valor_chave:
         log_acesso("ACESSO_NEGADO", "VALIDACAO", portal_session,
                    detalhe=f"campo-chave {chave.key} ausente")
-        flash(f"Preencha o campo {chave.label}.", "error")
-        return redirect(url_for("portal.entry"))
+        return _tela_login(erros={chave.key: f"{chave.label} é obrigatório."})
 
     visitor = Visitor.query.filter(
         getattr(Visitor, chave.coluna) == valor_chave
@@ -131,8 +210,10 @@ def identify():
         if visitor.is_blocked:
             log_acesso("ACESSO_NEGADO", "VISITANTE_BLOQUEADO", portal_session, visitor,
                        detalhe=visitor.block_reason)
-            flash("Seu acesso foi restrito. Entre em contato com o suporte.", "error")
-            return redirect(url_for("portal.entry"))
+            motivo = visitor.block_reason or "não informado"
+            return _tela_login(aviso=(
+                "Seu acesso está bloqueado neste local. "
+                f"Motivo: {motivo}. Procure um atendente para liberar."))
 
         # Os demais campos do login sao complementares: atualizam o cadastro
         # quando mudam, mas nunca sobrescrevem valor que ja e de outra pessoa.
@@ -163,13 +244,16 @@ def identify():
             log_acesso("ACESSO_LIBERADO", portal_session=portal_session, visitor=visitor)
             return render_template(
                 "portal/success.html",
-                redirect_url=portal_session.redirect_url,
                 name=visitor.full_name,
+                ssid=portal_session.ssid,
+                destino_url=_destino_original(portal_session, store),
                 **_portal_cfg(),
             )
         log_acesso("ACESSO_NEGADO", "UNIFI_FALHOU", portal_session, visitor)
-        flash("N\u00e3o foi poss\u00edvel autorizar o acesso agora. Tente novamente.", "error")
-        return redirect(url_for("portal.entry"))
+        return _tela_login(aviso=(
+            "Seus dados foram reconhecidos, mas a rede não liberou o acesso. "
+            "Desligue e ligue o Wi-Fi do aparelho e tente de novo; "
+            "se persistir, avise um atendente."))
 
     session["reg_login"] = valores
     return redirect(url_for("portal.register"))
@@ -184,26 +268,7 @@ def register():
     if not portal_session:
         return redirect(url_for("portal.entry"))
 
-    # Mostra o que ele ja informou na identificacao, formatado
-    informados = []
-    for campo in form_service.campos("login"):
-        valor = session["reg_login"].get(campo.key)
-        if not valor:
-            continue
-        if campo.field_type == "cpf":
-            valor = format_cpf(valor)
-        elif campo.field_type == "phone":
-            valor = format_phone(valor)
-        informados.append({"label": campo.label, "valor": valor})
-
-    return render_template(
-        "portal/register.html",
-        campos=form_service.campos("signup"),
-        informados=informados,
-        privacy_url=current_app.config.get("PRIVACY_POLICY_URL", "#"),
-        terms_version=current_app.config.get("TERMS_VERSION", "1.0"),
-        **_portal_cfg(),
-    )
+    return _tela_cadastro()
 
 
 @bp.post("/guest/localizacao")
@@ -251,24 +316,26 @@ def registrar_localizacao():
 def register_submit():
     portal_session = _get_portal_session()
     if not portal_session:
-        flash("Sess\u00e3o expirada. Por favor, conecte-se novamente.", "error")
+        flash("A tela ficou aberta tempo demais. Desligue e ligue o Wi-Fi "
+              "do aparelho para recomeçar.", "error")
         return redirect(url_for("portal.entry"))
 
     dados_login = session.get("reg_login") or {}
     marketing_optin = bool(request.form.get("marketing_optin"))
     terms_version   = current_app.config.get("TERMS_VERSION", "1.0")
 
-    valores, erro = form_service.coletar("signup", request.form)
-    if erro:
-        log_acesso("CADASTRO_NEGADO", "VALIDACAO", portal_session, detalhe=erro)
-        flash(erro, "error")
-        return redirect(url_for("portal.register"))
+    valores, erros = form_service.coletar("signup", request.form)
+    if erros:
+        log_acesso("CADASTRO_NEGADO", "VALIDACAO", portal_session,
+                   detalhe="; ".join(f"{k}: {v}" for k, v in erros.items()))
+        return _tela_cadastro(erros=erros)
 
     chave = form_service.campo_chave()
     valor_chave = dados_login.get(chave.key)
     if not valor_chave or not chave.coluna:
         log_acesso("CADASTRO_NEGADO", "SESSAO_EXPIRADA", portal_session)
-        flash("Sess\u00e3o expirada. Por favor, identifique-se novamente.", "error")
+        flash("A tela ficou aberta tempo demais e seus dados se perderam. "
+              "Informe novamente para continuar.", "error")
         return redirect(url_for("portal.entry"))
 
     def busca():
@@ -292,8 +359,9 @@ def register_submit():
             visitor = busca()
             if visitor is None:
                 log_acesso("CADASTRO_NEGADO", "ERRO_CADASTRO", portal_session)
-                flash("Erro ao cadastrar. Tente novamente.", "error")
-                return redirect(url_for("portal.register"))
+                return _tela_cadastro(aviso=(
+                    f"Não foi possível concluir o cadastro. Verifique se o "
+                    f"{chave.label.lower()} informado já não está em uso por outra pessoa."))
     else:
         form_service.aplicar(visitor, valores, "signup")
 
@@ -310,10 +378,13 @@ def register_submit():
         log_acesso("ACESSO_LIBERADO", portal_session=portal_session, visitor=visitor)
         return render_template(
             "portal/success.html",
-            redirect_url=portal_session.redirect_url,
             name=visitor.full_name,
+            ssid=portal_session.ssid,
+            destino_url=_destino_original(portal_session, store),
             **_portal_cfg(),
         )
     log_acesso("ACESSO_NEGADO", "UNIFI_FALHOU", portal_session, visitor)
-    flash("Cadastro realizado, mas n\u00e3o foi poss\u00edvel autorizar agora. Tente novamente.", "error")
+    flash("Cadastro concluído, mas a rede não liberou o acesso. Seus dados já "
+          "estão salvos: desligue e ligue o Wi-Fi e informe-se novamente. "
+          "Se persistir, avise um atendente.", "error")
     return redirect(url_for("portal.entry"))
