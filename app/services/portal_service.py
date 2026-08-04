@@ -172,6 +172,41 @@ def log_acesso(evento: str, motivo: str = None, portal_session=None,
         logger.warning('[audit] falha ao registrar %s/%s', evento, motivo, exc_info=True)
 
 
+def revoke_visitor_sessions(visitor: Visitor) -> int:
+    """Derruba no controlador tudo o que o visitante tem conectado.
+
+    Bloquear ou excluir alguem sem isso nao tira ninguem da rede: a
+    autorizacao ja concedida vale ate a janela expirar (8h por padrao), e
+    ate la a pessoa bloqueada continua navegando. Retorna quantas conexoes
+    foram encerradas.
+    """
+    abertas = (PortalSession.query
+               .filter_by(visitor_id=visitor.id, authorized=True)
+               .filter(PortalSession.expired_at.is_(None)).all())
+    if not abertas:
+        return 0
+
+    encerradas = 0
+    for ps in abertas:
+        store = Store.query.get(ps.store_id) if ps.store_id else None
+        try:
+            ok, _ = revoke_session(ps, store)
+            if ok:
+                encerradas += 1
+        except Exception:
+            # Falha ao falar com o controlador nao pode impedir o bloqueio;
+            # a sessao e encerrada localmente e o registro fica no log.
+            logger.warning('[revoke] falha ao derrubar sessao %s do visitante %s',
+                           ps.id, visitor.id, exc_info=True)
+            try:
+                ps.close()
+                db.session.commit()
+                encerradas += 1
+            except Exception:
+                db.session.rollback()
+    return encerradas
+
+
 def record_consent(visitor: Visitor, marketing_optin: bool = False, version: str = "1.0"):
     visitor.terms_accepted_at = datetime.now(timezone.utc)
     visitor.terms_version     = version

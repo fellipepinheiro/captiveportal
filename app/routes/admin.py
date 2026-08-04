@@ -367,7 +367,16 @@ def visitor_block(vid: int):
     visitor.is_blocked   = True
     visitor.block_reason = reason
     db.session.commit()
-    flash(f"Visitante '{visitor.full_name}' bloqueado.", "success")
+
+    # Bloquear sem derrubar nao tira ninguem da rede: a autorizacao ja
+    # concedida vale ate a janela expirar.
+    from app.services.portal_service import revoke_visitor_sessions
+    derrubadas = revoke_visitor_sessions(visitor)
+
+    aviso = f"Visitante '{visitor.full_name}' bloqueado."
+    if derrubadas:
+        aviso += f" {derrubadas} conexão(ões) encerrada(s)."
+    flash(aviso, "success")
     return redirect(url_for("admin.visitors"))
 
 
@@ -395,6 +404,11 @@ def visitor_delete(vid: int):
     visitor = Visitor.query.get_or_404(vid)
     nome = visitor.full_name
 
+    # Derruba antes de apagar: depois de desvincular as sessoes nao ha mais
+    # como saber quais dispositivos eram dele.
+    from app.services.portal_service import revoke_visitor_sessions
+    derrubadas = revoke_visitor_sessions(visitor)
+
     try:
         # Desvincula os logs em vez de apaga-los
         PortalSession.query.filter_by(visitor_id=visitor.id).update(
@@ -421,8 +435,12 @@ def visitor_delete(vid: int):
         flash("Não foi possível excluir o cadastro.", "error")
         return redirect(url_for("admin.visitors"))
 
-    flash(f"Cadastro de '{nome}' excluído. Os registros de acesso foram mantidos "
-          f"de forma anônima, conforme o Marco Civil da Internet.", "success")
+    aviso = f"Cadastro de '{nome}' excluído."
+    if derrubadas:
+        aviso += f" {derrubadas} conexão(ões) encerrada(s)."
+    aviso += (" Os registros de acesso foram mantidos de forma anônima, "
+              "conforme o Marco Civil da Internet.")
+    flash(aviso, "success")
     return redirect(url_for("admin.visitors"))
 
 
