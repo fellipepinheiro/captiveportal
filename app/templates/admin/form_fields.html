@@ -1,0 +1,238 @@
+{% extends 'admin/base_admin.html' %}
+{% block title %}Formulário do portal{% endblock %}
+{% block content %}
+
+<div class="mb-5">
+  <h1 class="text-xl font-bold text-white">Formulário do portal</h1>
+  <p class="text-sm text-slate-500 mt-0.5">
+    Escolha o que é pedido na identificação e no cadastro do visitante
+  </p>
+</div>
+
+{% macro tabela(titulo, ajuda, campos, stage) %}
+<div class="bg-slate-900 border border-white/5 rounded-2xl overflow-hidden mb-4">
+  <div class="px-4 py-3 border-b border-white/5">
+    <h2 class="text-sm font-medium text-white">{{ titulo }}</h2>
+    <p class="text-xs text-slate-600 mt-0.5">{{ ajuda }}</p>
+  </div>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-xs text-slate-500 border-b border-white/5">
+          <th class="text-left px-4 py-2.5 font-medium">Campo</th>
+          <th class="text-left px-4 py-2.5 font-medium">Rótulo exibido</th>
+          <th class="text-center px-4 py-2.5 font-medium">Ativo</th>
+          <th class="text-center px-4 py-2.5 font-medium">Obrigatório</th>
+          {% if stage == 'login' %}
+          <th class="text-center px-4 py-2.5 font-medium">Identifica</th>
+          {% endif %}
+          <th class="text-center px-4 py-2.5 font-medium">Ordem</th>
+          <th class="text-right px-4 py-2.5 font-medium"></th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-white/5">
+        {% for c in campos %}
+        <tr class="hover:bg-white/3 transition align-top">
+          <td class="px-4 py-3">
+            <p class="text-slate-200">{{ tipos.get(c.field_type, c.field_type) }}</p>
+            <code class="text-xs text-slate-600">{{ c.key }}</code>
+            {% if not c.e_conhecido %}
+            <span class="ml-1 text-xs text-indigo-400/80">livre</span>
+            {% endif %}
+          </td>
+          <td class="px-4 py-3">
+            <input name="label_{{ c.id }}" value="{{ c.label }}" maxlength="80"
+                   class="w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-1.5 text-xs text-slate-100
+                          focus:outline-none focus:border-teal-500/50">
+            <input name="placeholder_{{ c.id }}" value="{{ c.placeholder or '' }}" maxlength="120"
+                   placeholder="dica dentro do campo"
+                   class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-1.5 text-xs text-slate-400
+                          focus:outline-none focus:border-teal-500/50">
+            <input name="help_{{ c.id }}" value="{{ c.help_text or '' }}" maxlength="200"
+                   placeholder="texto de ajuda abaixo do campo"
+                   class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-1.5 text-xs text-slate-400
+                          focus:outline-none focus:border-teal-500/50">
+            {% if c.field_type == 'select' %}
+            <textarea name="options_{{ c.id }}" rows="3" placeholder="uma opção por linha"
+                      class="mt-1 w-full rounded-lg bg-white/5 border border-white/10 px-2.5 py-1.5 text-xs text-slate-300
+                             focus:outline-none focus:border-teal-500/50">{{ c.options or '' }}</textarea>
+            {% endif %}
+          </td>
+          <td class="px-4 py-3 text-center">
+            <input type="checkbox" name="enabled_{{ c.id }}" {% if c.enabled %}checked{% endif %}
+                   class="h-4 w-4 rounded accent-teal-500">
+          </td>
+          <td class="px-4 py-3 text-center">
+            <input type="checkbox" name="required_{{ c.id }}" {% if c.required %}checked{% endif %}
+                   class="req h-4 w-4 rounded accent-teal-500" data-key="{{ c.key }}">
+          </td>
+          {% if stage == 'login' %}
+          <td class="px-4 py-3 text-center">
+            {% if c.key in chaves_possiveis %}
+            <input type="radio" name="chave" value="{{ c.key }}"
+                   {% if chave and chave.key == c.key %}checked{% endif %}
+                   class="h-4 w-4 accent-teal-500">
+            {% else %}
+            <span class="text-xs text-slate-600" title="Só CPF, celular ou e-mail podem identificar">—</span>
+            {% endif %}
+          </td>
+          {% endif %}
+          <td class="px-4 py-3 text-center">
+            <input type="number" name="order_{{ c.id }}" value="{{ c.order }}" min="0" max="999"
+                   class="w-16 rounded-lg bg-white/5 border border-white/10 px-2 py-1.5 text-xs text-center
+                          text-slate-300 focus:outline-none focus:border-teal-500/50">
+          </td>
+          <td class="px-4 py-3 text-right">
+            {% if c.id %}
+            <button type="button" onclick="removerCampo({{ c.id }}, '{{ c.label | e }}', {{ 'true' if c.is_key else 'false' }})"
+                    class="text-xs px-2 py-1 rounded-lg border border-red-500/20 text-red-400 hover:bg-red-500/10 transition">
+              Remover
+            </button>
+            {% endif %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="7" class="px-4 py-6 text-center text-xs text-slate-600">
+          Nenhum campo configurado — o portal usará o formulário padrão.
+        </td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endmacro %}
+
+<form method="post" action="{{ url_for('admin.form_fields_save') }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  {{ tabela('Identificação',
+            'Pedido a todo acesso. O campo marcado como “Identifica” é o que reconhece quem já tem cadastro.',
+            login, 'login') }}
+
+  {{ tabela('Cadastro',
+            'Pedido apenas na primeira vez, quando o visitante ainda não tem ficha.',
+            signup, 'signup') }}
+
+  <div class="flex justify-end mb-6">
+    <button type="submit" class="rounded-xl px-5 py-2.5 text-sm font-semibold btn-accent">
+      Salvar formulário
+    </button>
+  </div>
+</form>
+
+<!-- ── Adicionar campo ──────────────────────────────────────────────────── -->
+<div class="bg-slate-900 border border-white/5 rounded-2xl p-5">
+  <h2 class="text-sm font-medium text-white mb-1">Adicionar campo</h2>
+  <p class="text-xs text-slate-600 mb-4">
+    Escolha um campo já conhecido (validação pronta) ou crie um livre para
+    perguntar algo específico do seu negócio.
+  </p>
+  <form method="post" action="{{ url_for('admin.form_field_add') }}"
+        class="flex flex-wrap items-end gap-3">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    <div>
+      <label class="block text-xs text-slate-500 mb-1">Etapa</label>
+      <select name="stage" id="novo-stage"
+              class="rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-slate-100
+                     focus:outline-none focus:border-teal-500/50">
+        <option value="signup">Cadastro</option>
+        <option value="login">Identificação</option>
+      </select>
+    </div>
+
+    <div>
+      <label class="block text-xs text-slate-500 mb-1">Campo conhecido</label>
+      <select id="novo-conhecido"
+              class="rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-slate-100
+                     focus:outline-none focus:border-teal-500/50 min-w-[170px]">
+        <option value="">— criar campo livre —</option>
+        {% for k, info in conhecidos.items() %}
+        <option value="{{ k }}" data-label="{{ info.label }}" data-tipo="{{ info.tipo }}">{{ info.label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div>
+      <label class="block text-xs text-slate-500 mb-1">Identificador</label>
+      <input name="key" id="novo-key" required maxlength="40" placeholder="ex: instagram"
+             class="rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-slate-100 font-mono
+                    focus:outline-none focus:border-teal-500/50 min-w-[150px]">
+    </div>
+
+    <div>
+      <label class="block text-xs text-slate-500 mb-1">Rótulo</label>
+      <input name="label" id="novo-label" required maxlength="80" placeholder="ex: Seu Instagram"
+             class="rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-slate-100
+                    focus:outline-none focus:border-teal-500/50 min-w-[170px]">
+    </div>
+
+    <div>
+      <label class="block text-xs text-slate-500 mb-1">Tipo</label>
+      <select name="field_type" id="novo-tipo"
+              class="rounded-xl bg-white/5 border border-white/10 px-3 py-2 text-sm text-slate-100
+                     focus:outline-none focus:border-teal-500/50">
+        {% for k, nome in tipos.items() %}
+        <option value="{{ k }}">{{ nome }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <button type="submit" class="rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-200 hover:bg-white/10 transition">
+      Adicionar
+    </button>
+  </form>
+</div>
+
+<form method="post" id="form-remover" class="hidden">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+</form>
+
+<script>
+// Escolher um campo conhecido preenche identificador e tipo, já que a
+// validação dele é fixa no sistema.
+const conhecido = document.getElementById('novo-conhecido');
+conhecido.addEventListener('change', function () {
+  const opt = this.selectedOptions[0];
+  const key = this.value;
+  document.getElementById('novo-key').value   = key;
+  document.getElementById('novo-label').value = key ? opt.dataset.label : '';
+  const tipo = document.getElementById('novo-tipo');
+  tipo.value    = key ? opt.dataset.tipo : 'text';
+  tipo.disabled = !!key;
+  document.getElementById('novo-key').readOnly = !!key;
+});
+
+function removerCampo(id, label, ehChave) {
+  if (ehChave) {
+    alert('Este campo identifica o visitante. Escolha outro identificador antes de removê-lo.');
+    return;
+  }
+  if (!confirm('Remover o campo "' + label + '"? Ele deixa de ser pedido no portal; '
+             + 'os dados já coletados continuam guardados.')) return;
+  const f = document.getElementById('form-remover');
+  f.action = '/admin/formulario/' + id + '/remover';
+  f.submit();
+}
+
+// O campo que identifica é sempre obrigatório — marca e trava o checkbox
+// para não configurar algo que o servidor vai recusar.
+function sincronizarObrigatorio() {
+  const chave = document.querySelector('input[name="chave"]:checked');
+  document.querySelectorAll('.req').forEach(function (el) {
+    const ehChave = chave && el.dataset.key === chave.value;
+    if (ehChave) { el.checked = true; el.disabled = true; }
+    else el.disabled = false;
+  });
+}
+document.querySelectorAll('input[name="chave"]').forEach(function (r) {
+  r.addEventListener('change', sincronizarObrigatorio);
+});
+sincronizarObrigatorio();
+
+// Checkbox desabilitado não é enviado; repõe antes do submit.
+document.querySelector('form[action*="salvar"]').addEventListener('submit', function () {
+  document.querySelectorAll('.req:disabled').forEach(function (el) { el.disabled = false; });
+});
+</script>
+{% endblock %}

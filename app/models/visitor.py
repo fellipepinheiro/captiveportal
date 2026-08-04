@@ -23,6 +23,10 @@ class Visitor(db.Model):
     updated_at  = db.Column(db.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
                             onupdate=lambda: datetime.now(timezone.utc))
 
+    # Respostas de campos configurados pelo admin que nao tem coluna propria.
+    # Guardado como JSON em texto para nao exigir migration a cada pergunta nova.
+    extra_data  = db.Column(db.Text)
+
     # Consentimento LGPD
     terms_accepted_at   = db.Column(db.DateTime(timezone=True))
     terms_version       = db.Column(db.String(10))
@@ -71,6 +75,23 @@ class Visitor(db.Model):
     @classmethod
     def find_by_cpf(cls, cpf: str):
         return cls.query.filter_by(cpf=cpf).first()
+
+    @property
+    def extras(self) -> dict:
+        """Respostas dos campos livres, sempre como dict."""
+        import json
+        if not self.extra_data:
+            return {}
+        try:
+            dados = json.loads(self.extra_data)
+            return dados if isinstance(dados, dict) else {}
+        except (ValueError, TypeError):
+            return {}
+
+    def set_extras(self, dados: dict):
+        import json
+        limpo = {k: v for k, v in (dados or {}).items() if v not in (None, '')}
+        self.extra_data = json.dumps(limpo, ensure_ascii=False) if limpo else None
 
     def touch(self):
         """Atualiza contadores de visita."""

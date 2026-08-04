@@ -5,6 +5,7 @@ from app.models.data_subject_request import DataSubjectRequest
 from app.models.audit_log import AuditLog
 from app.models.admin_user import AdminUser
 from app.models.store import Store
+from app.models.form_field import FormField
 
 __all__ = [
     "Visitor",
@@ -14,4 +15,5 @@ __all__ = [
     "AuditLog",
     "AdminUser",
     "Store",
+    "FormField",
 ]
