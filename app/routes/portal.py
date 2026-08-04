@@ -209,6 +209,7 @@ def identify():
             return render_template(
                 "portal/success.html",
                 name=visitor.full_name,
+                ssid=portal_session.ssid,
                 **_portal_cfg(),
             )
         log_acesso("ACESSO_NEGADO", "UNIFI_FALHOU", portal_session, visitor)
@@ -341,6 +342,7 @@ def register_submit():
         return render_template(
             "portal/success.html",
             name=visitor.full_name,
+            ssid=portal_session.ssid,
             **_portal_cfg(),
         )
     log_acesso("ACESSO_NEGADO", "UNIFI_FALHOU", portal_session, visitor)
