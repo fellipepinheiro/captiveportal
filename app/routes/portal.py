@@ -68,6 +68,17 @@ def _resolve_store(slug: str):
     return None
 
 
+def _destino(store, portal_session) -> str:
+    """Para onde mandar o visitante depois do acesso liberado.
+
+    A loja pode fixar um destino (site, promocao); sem isso ele volta para
+    a pagina que tentava abrir, que e o que a pessoa espera.
+    """
+    if store:
+        return store.destino(portal_session.redirect_url)
+    return portal_session.redirect_url or "http://google.com"
+
+
 def _tela_login(erros=None, aviso=None, ssid=None):
     """Reexibe a identificacao mantendo o que o visitante ja digitou.
 
@@ -208,7 +219,7 @@ def identify():
             log_acesso("ACESSO_LIBERADO", portal_session=portal_session, visitor=visitor)
             return render_template(
                 "portal/success.html",
-                redirect_url=portal_session.redirect_url,
+                redirect_url=_destino(store, portal_session),
                 name=visitor.full_name,
                 **_portal_cfg(),
             )
@@ -341,7 +352,7 @@ def register_submit():
         log_acesso("ACESSO_LIBERADO", portal_session=portal_session, visitor=visitor)
         return render_template(
             "portal/success.html",
-            redirect_url=portal_session.redirect_url,
+            redirect_url=_destino(store, portal_session),
             name=visitor.full_name,
             **_portal_cfg(),
         )
