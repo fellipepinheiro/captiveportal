@@ -104,6 +104,31 @@ def _destino_original(portal_session, store=None) -> str | None:
     return da_loja or None
 
 
+#: Colunas com indice unico em `visitors`. Qualquer uma delas pode derrubar
+#: o cadastro com IntegrityError — nao so a que identifica o visitante.
+_COLUNAS_UNICAS = ("cpf", "email", "mobile")
+
+
+def _campo_em_conflito(valores: dict):
+    """Descobre qual dado ja pertence a outra pessoa.
+
+    Consulta o banco em vez de interpretar o texto do erro: a mensagem de
+    violacao muda entre MySQL, MariaDB e SQLite, e depender dela quebraria
+    conforme o banco de cada instalacao.
+
+    Retorna (campo_configurado, valor) ou (None, None).
+    """
+    campos = {c.coluna: c for c in
+              form_service.campos("login") + form_service.campos("signup") if c.coluna}
+    for coluna in _COLUNAS_UNICAS:
+        valor = valores.get(coluna)
+        if not valor:
+            continue
+        if Visitor.query.filter(getattr(Visitor, coluna) == valor).first():
+            return campos.get(coluna), valor
+    return None, None
+
+
 def _tela_login(erros=None, aviso=None, ssid=None):
     """Reexibe a identificacao mantendo o que o visitante ja digitou.
 
@@ -360,12 +385,32 @@ def register_submit():
             created = True
         except IntegrityError:
             db.session.rollback()
+            # Guarda os valores antes do rollback expirar o objeto: sao eles
+            # que dizem qual coluna unica colidiu.
+            candidatos = {c: getattr(visitor, c, None) for c in _COLUNAS_UNICAS}
             visitor = busca()
             if visitor is None:
-                log_acesso("CADASTRO_NEGADO", "ERRO_CADASTRO", portal_session)
+                # A colisao nem sempre e no campo-chave. E-mail e CPF tambem
+                # sao unicos, e culpar sempre a chave manda o visitante
+                # conferir um dado que estava correto — foi o que acontecia
+                # quando alguem repetia o e-mail com outro telefone.
+                campo, valor = _campo_em_conflito(candidatos)
+                log_acesso("CADASTRO_NEGADO", "ERRO_CADASTRO", portal_session,
+                           detalhe=f"conflito em {campo.coluna if campo else 'desconhecido'}")
+                # Siglas ficam como estao: "Este cpf" soa errado.
+                rotulo = campo.label if campo and campo.label.isupper() \
+                    else (campo.label.lower() if campo else "")
+                if campo and campo.stage == "signup":
+                    return _tela_cadastro(erros={campo.key: (
+                        f"Este {rotulo} já está cadastrado para outra pessoa. "
+                        f"Use outro ou deixe em branco.")})
+                if campo:
+                    return _tela_cadastro(aviso=(
+                        f"O {rotulo} informado ({valor}) já está cadastrado "
+                        f"para outra pessoa. Volte e corrija."))
                 return _tela_cadastro(aviso=(
-                    f"Não foi possível concluir o cadastro. Verifique se o "
-                    f"{chave.label.lower()} informado já não está em uso por outra pessoa."))
+                    "Não foi possível concluir o cadastro. Confira os dados "
+                    "informados e tente de novo."))
     else:
         form_service.aplicar(visitor, valores, "signup")
 

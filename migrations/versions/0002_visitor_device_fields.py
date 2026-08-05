@@ -4,6 +4,15 @@ Revision ID: 0002v
 Revises: 0002
 Create Date: 2026-05-25
 
+A versao original usava `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, que e
+sintaxe **so do MariaDB**. No MySQL vira erro de sintaxe (1064) e a cadeia
+de migrations para aqui — instalacao nova sobre MySQL, o banco do
+docker-compose do projeto, nao chegava nem perto do fim. Sobre MariaDB
+passava, e foi por isso que demorou a aparecer.
+
+As colunas existentes agora sao consultadas pelo inspector e cada uma e
+criada so se faltar: mesmo efeito, portatil entre MySQL, MariaDB e SQLite,
+e continua seguro de re-executar.
 """
 from alembic import op
 import sqlalchemy as sa
@@ -14,36 +23,46 @@ branch_labels = None
 depends_on = None
 
 
-def upgrade():
-    # ── visitors ──────────────────────────────────────────────────────────────
-    op.execute("ALTER TABLE visitors ADD COLUMN IF NOT EXISTS visit_count INT DEFAULT 0")
-    op.execute("ALTER TABLE visitors ADD COLUMN IF NOT EXISTS last_seen DATETIME NULL")
-    op.execute("ALTER TABLE visitors ADD COLUMN IF NOT EXISTS is_blocked TINYINT(1) DEFAULT 0")
-    op.execute("ALTER TABLE visitors ADD COLUMN IF NOT EXISTS block_reason VARCHAR(200) NULL")
+#: (tabela, nome, fabrica_do_tipo, kwargs) — a coluna e construida na hora
+#: porque um mesmo objeto Column nao pode ser reaproveitado entre chamadas.
+COLUNAS = (
+    ('visitors', 'visit_count',  lambda: sa.Integer(),  {'nullable': True, 'server_default': sa.text('0')}),
+    ('visitors', 'last_seen',    lambda: sa.DateTime(), {'nullable': True}),
+    ('visitors', 'is_blocked',   lambda: sa.Boolean(),  {'nullable': True, 'server_default': sa.text('0')}),
+    ('visitors', 'block_reason', lambda: sa.String(200), {'nullable': True}),
 
-    # ── portal_sessions ───────────────────────────────────────────────────────
-    op.execute("ALTER TABLE portal_sessions ADD COLUMN IF NOT EXISTS client_ip VARCHAR(45) NULL")
-    op.execute("ALTER TABLE portal_sessions ADD COLUMN IF NOT EXISTS user_agent VARCHAR(300) NULL")
-    op.execute("ALTER TABLE portal_sessions ADD COLUMN IF NOT EXISTS device_type VARCHAR(30) NULL")
-    op.execute("ALTER TABLE portal_sessions ADD COLUMN IF NOT EXISTS os_hint VARCHAR(50) NULL")
-    op.execute("ALTER TABLE portal_sessions ADD COLUMN IF NOT EXISTS duration_minutes INT DEFAULT 0")
-    op.execute("ALTER TABLE portal_sessions ADD COLUMN IF NOT EXISTS bytes_up BIGINT DEFAULT 0")
-    op.execute("ALTER TABLE portal_sessions ADD COLUMN IF NOT EXISTS bytes_down BIGINT DEFAULT 0")
-    op.execute("ALTER TABLE portal_sessions ADD COLUMN IF NOT EXISTS expired_at DATETIME NULL")
+    ('portal_sessions', 'client_ip',        lambda: sa.String(45),   {'nullable': True}),
+    ('portal_sessions', 'user_agent',       lambda: sa.String(300),  {'nullable': True}),
+    ('portal_sessions', 'device_type',      lambda: sa.String(30),   {'nullable': True}),
+    ('portal_sessions', 'os_hint',          lambda: sa.String(50),   {'nullable': True}),
+    ('portal_sessions', 'duration_minutes', lambda: sa.Integer(),    {'nullable': True, 'server_default': sa.text('0')}),
+    ('portal_sessions', 'bytes_up',         lambda: sa.BigInteger(), {'nullable': True, 'server_default': sa.text('0')}),
+    ('portal_sessions', 'bytes_down',       lambda: sa.BigInteger(), {'nullable': True, 'server_default': sa.text('0')}),
+    ('portal_sessions', 'expired_at',       lambda: sa.DateTime(),   {'nullable': True}),
+)
+
+
+def _existentes(tabela: str) -> set:
+    inspector = sa.inspect(op.get_bind())
+    return {c['name'] for c in inspector.get_columns(tabela)}
+
+
+def upgrade():
+    cache = {}
+    for tabela, nome, tipo, kwargs in COLUNAS:
+        if tabela not in cache:
+            cache[tabela] = _existentes(tabela)
+        if nome in cache[tabela]:
+            continue
+        op.add_column(tabela, sa.Column(nome, tipo(), **kwargs))
 
 
 def downgrade():
-    with op.batch_alter_table('visitors') as batch_op:
-        for col in ('block_reason', 'is_blocked', 'last_seen', 'visit_count'):
-            try:
-                batch_op.drop_column(col)
-            except Exception:
-                pass
-
-    with op.batch_alter_table('portal_sessions') as batch_op:
-        for col in ('expired_at', 'bytes_down', 'bytes_up', 'duration_minutes',
-                    'os_hint', 'device_type', 'user_agent', 'client_ip'):
-            try:
-                batch_op.drop_column(col)
-            except Exception:
-                pass
+    for tabela in ('portal_sessions', 'visitors'):
+        existentes = _existentes(tabela)
+        alvos = [nome for t, nome, _, _ in COLUNAS if t == tabela and nome in existentes]
+        if not alvos:
+            continue
+        with op.batch_alter_table(tabela) as batch_op:
+            for nome in reversed(alvos):
+                batch_op.drop_column(nome)
