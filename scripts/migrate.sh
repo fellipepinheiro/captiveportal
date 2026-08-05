@@ -7,17 +7,47 @@ MAX=30
 I=0
 until python - <<'PYEOF'
 import os, sys
-try:
-    import pymysql
-    pymysql.connect(
+
+def conexao():
+    """Parametros de conexao, preferindo o DATABASE_URL.
+
+    O alembic usa DATABASE_URL; este script usava DB_HOST/MYSQL_* avulsas.
+    Quando os dois divergem — tipico ao encaixar o portal num compose que ja
+    tem outros bancos — a espera falha com "access denied" contra um banco
+    que nem e o da aplicacao, enquanto o app funciona normalmente. Ler a URL
+    primeiro elimina a chance de divergirem.
+    """
+    url = (os.environ.get('DATABASE_URL') or '').strip()
+    if url:
+        try:
+            from urllib.parse import urlparse, unquote
+            u = urlparse(url)
+            if u.hostname:
+                return dict(
+                    host=u.hostname,
+                    port=u.port or 3306,
+                    user=unquote(u.username or ''),
+                    password=unquote(u.password or ''),
+                    database=(u.path or '/').lstrip('/'),
+                )
+        except Exception as exc:
+            print(f'  -> DATABASE_URL ilegivel ({exc}); usando as variaveis avulsas',
+                  file=sys.stderr)
+    return dict(
         host=os.environ.get('DB_HOST', 'db'),
+        port=int(os.environ.get('DB_PORT', '3306')),
         user=os.environ.get('MYSQL_USER', 'portal'),
         password=os.environ.get('MYSQL_PASSWORD', 'portalsecret'),
         database=os.environ.get('MYSQL_DATABASE', 'unifi_portal'),
-        connect_timeout=3
-    ).close()
+    )
+
+try:
+    import pymysql
+    alvo = conexao()
+    pymysql.connect(connect_timeout=3, **alvo).close()
 except Exception as e:
-    print(f'  -> {e}', file=sys.stderr)
+    print(f"  -> {e}  (alvo: {alvo.get('user')}@{alvo.get('host')}:{alvo.get('port')}"
+          f"/{alvo.get('database')})", file=sys.stderr)
     sys.exit(1)
 PYEOF
 do
@@ -36,15 +66,44 @@ echo "[migrate] Banco pronto. Verificando consistencia do alembic_version..."
 # Se nao existir (hash fantasma), limpa a tabela para que o alembic
 # consiga reconstruir o estado a partir do zero.
 python - <<'PYEOF'
-import os, sys, subprocess
-try:
-    import pymysql
-    conn = pymysql.connect(
+import os, sys
+
+def conexao():
+    """Parametros de conexao, preferindo o DATABASE_URL.
+
+    O alembic usa DATABASE_URL; este script usava DB_HOST/MYSQL_* avulsas.
+    Quando os dois divergem — tipico ao encaixar o portal num compose que ja
+    tem outros bancos — a espera falha com "access denied" contra um banco
+    que nem e o da aplicacao, enquanto o app funciona normalmente. Ler a URL
+    primeiro elimina a chance de divergirem.
+    """
+    url = (os.environ.get('DATABASE_URL') or '').strip()
+    if url:
+        try:
+            from urllib.parse import urlparse, unquote
+            u = urlparse(url)
+            if u.hostname:
+                return dict(
+                    host=u.hostname,
+                    port=u.port or 3306,
+                    user=unquote(u.username or ''),
+                    password=unquote(u.password or ''),
+                    database=(u.path or '/').lstrip('/'),
+                )
+        except Exception as exc:
+            print(f'  -> DATABASE_URL ilegivel ({exc}); usando as variaveis avulsas',
+                  file=sys.stderr)
+    return dict(
         host=os.environ.get('DB_HOST', 'db'),
+        port=int(os.environ.get('DB_PORT', '3306')),
         user=os.environ.get('MYSQL_USER', 'portal'),
         password=os.environ.get('MYSQL_PASSWORD', 'portalsecret'),
         database=os.environ.get('MYSQL_DATABASE', 'unifi_portal'),
     )
+
+try:
+    import pymysql
+    conn = pymysql.connect(**conexao())
     cur = conn.cursor()
 
     # Le a revisao atual gravada no banco
